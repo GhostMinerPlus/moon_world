@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{collections::HashMap, rc::Rc};
 
 use rapier2d::prelude::{ColliderHandle, CollisionEvent, ContactForceEvent};
 use winit::event::WindowEvent;
@@ -27,13 +27,23 @@ impl<'a> SceneHandle<'a> {
         self.engine.body_mp.insert(
             body_id,
             Body {
-                class: body.class,
-                name: body.name,
+                class: body.class.clone(),
+                name: body.name.clone(),
                 look: body.look,
                 rigid: body_handle,
                 life_step_op: body.life_step_op,
             },
         );
+        match self.engine.body_index_mp.get_mut(&body.class) {
+            Some(mp) => {
+                mp.insert(body.name, body_id);
+            }
+            None => {
+                let mut mp = HashMap::new();
+                mp.insert(body.name, body_id);
+                self.engine.body_index_mp.insert(body.class.clone(), mp);
+            }
+        }
         for collider in body.collider.collider_v {
             scene.physics_engine.collider_set.insert_with_parent(
                 collider,
@@ -109,5 +119,20 @@ impl<'a> SceneHandle<'a> {
 
     pub fn get_body(&mut self, id: &u64) -> Option<&Body> {
         self.engine.body_mp.get(id)
+    }
+
+    pub fn get_body_id_v_by_class(&self, class: &str) -> Vec<u64> {
+        match self.engine.body_index_mp.get(class) {
+            Some(mp) => mp.iter().map(|(_, v)| *v).collect(),
+            None => Vec::new(),
+        }
+    }
+
+    pub fn get_body_id_by_class_name(&self, class: &str, name: &str) -> Option<u64> {
+        self.engine
+            .body_index_mp
+            .get(class)?
+            .get(name)
+            .map(|id| *id)
     }
 }

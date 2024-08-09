@@ -178,6 +178,7 @@ impl EngineBuilder {
             cur_scene_id: 0,
             watcher_binding_body_id: 0,
             time_stamp: 0,
+            body_index_mp: HashMap::new(),
         })
     }
 }
@@ -185,6 +186,7 @@ impl EngineBuilder {
 pub struct Engine {
     unique_id: u64,
     scene_mp: HashMap<u64, res::Scene>,
+    body_index_mp: HashMap<String, HashMap<String, u64>>,
     body_mp: HashMap<u64, Body>,
 
     cur_scene_id: u64,
