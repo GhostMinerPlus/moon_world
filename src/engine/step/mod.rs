@@ -47,17 +47,13 @@ mod inner {
         loop {
             let scene = engine.scene_mp.get(&scene_id).unwrap();
             let event_op = scene.collision_event_rx.try_recv();
-            if event_op.is_err() {
+            if let Err(e) = event_op {
+                log::debug!("pull_collision_event: {e}");
                 break;
             }
-            if scene.on_collision_event.is_none() {
-                continue;
+            if let Some(on_collision_event) = &scene.on_collision_event {
+                (*on_collision_event.clone())(SceneHandle { engine, scene_id }, event_op.unwrap());
             }
-            let on_collision_event_op = scene.on_collision_event.clone();
-            (*on_collision_event_op.as_ref().unwrap())(
-                SceneHandle { engine, scene_id },
-                event_op.unwrap(),
-            );
         }
     }
 
