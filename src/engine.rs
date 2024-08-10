@@ -314,6 +314,10 @@ impl Engine {
             .get_mut(self.body_mp[&self.watcher_binding_body_id].rigid)
     }
 
+    pub fn get_watcher_binding_body_id(&self) -> u64 {
+        self.watcher_binding_body_id
+    }
+
     pub fn get_current_scene_handle_mut(&mut self) -> SceneHandle {
         let scene_id = self.cur_scene_id;
         SceneHandle {
