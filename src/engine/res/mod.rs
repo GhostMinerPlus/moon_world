@@ -78,6 +78,7 @@ mod inner {
             contact_pair: Option<&rapier2d::prelude::ContactPair>,
         ) {
             let _ = self.collision_sender.send(event);
+            log::debug!("sent collision_event");
         }
 
         fn handle_contact_force_event(

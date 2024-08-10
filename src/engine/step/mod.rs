@@ -47,8 +47,7 @@ mod inner {
         loop {
             let scene = engine.scene_mp.get(&scene_id).unwrap();
             let event_op = scene.collision_event_rx.try_recv();
-            if let Err(e) = event_op {
-                log::debug!("pull_collision_event: {e}");
+            if event_op.is_err() {
                 break;
             }
             if let Some(on_collision_event) = &scene.on_collision_event {
