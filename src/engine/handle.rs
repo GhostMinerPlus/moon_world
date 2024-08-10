@@ -1,6 +1,6 @@
 use std::{collections::HashMap, rc::Rc};
 
-use rapier2d::prelude::{ColliderHandle, CollisionEvent, ContactForceEvent};
+use rapier2d::prelude::{Collider, ColliderHandle, CollisionEvent, ContactForceEvent};
 use winit::event::WindowEvent;
 
 use super::{Body, BodyBuilder, Engine, Joint};
@@ -134,5 +134,10 @@ impl<'a> SceneHandle<'a> {
             .get(class)?
             .get(name)
             .map(|id| *id)
+    }
+
+    pub fn get_collider(&self, h: ColliderHandle) -> Option<&Collider> {
+        let scene = self.engine.scene_mp.get(&self.scene_id).unwrap();
+        scene.physics_engine.collider_set.get(h)
     }
 }
