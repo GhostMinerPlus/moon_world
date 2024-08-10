@@ -106,8 +106,8 @@ impl<'a> SceneHandle<'a> {
         &mut self.engine
     }
 
-    pub fn get_body_id_of_collider(&mut self, ch: ColliderHandle) -> u64 {
-        let scene = self.engine.scene_mp.get_mut(&self.scene_id).unwrap();
+    pub fn get_body_id_of_collider(&self, ch: ColliderHandle) -> u64 {
+        let scene = self.engine.scene_mp.get(&self.scene_id).unwrap();
         let rigid_body = &scene.physics_engine.rigid_body_set
             [scene.physics_engine.collider_set[ch].parent().unwrap()];
         rigid_body.user_data as u64
@@ -117,7 +117,7 @@ impl<'a> SceneHandle<'a> {
         self.engine.body_mp.get_mut(id)
     }
 
-    pub fn get_body(&mut self, id: &u64) -> Option<&Body> {
+    pub fn get_body(&self, id: &u64) -> Option<&Body> {
         self.engine.body_mp.get(id)
     }
 
