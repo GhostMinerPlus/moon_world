@@ -1,6 +1,6 @@
 use std::{collections::HashMap, rc::Rc};
 
-use rapier2d::prelude::{Collider, ColliderHandle, CollisionEvent, ContactForceEvent};
+use rapier2d::prelude::{Collider, ColliderHandle, CollisionEvent, ContactForceEvent, QueryFilter, Ray, Real};
 use winit::event::WindowEvent;
 
 use super::{Body, BodyBuilder, Engine, Joint};
@@ -12,12 +12,12 @@ pub struct SceneHandle<'a> {
 }
 
 impl<'a> SceneHandle<'a> {
-    /// Scene id
+    /// Get scene id.
     pub fn scene_id(&self) -> u64 {
         return self.scene_id;
     }
 
-    //// Add a body into this scene
+    //// Add a body into this scene.
     pub fn add_body(&mut self, mut body: BodyBuilder) -> u64 {
         let body_id = self.engine.unique_id;
         self.engine.unique_id += 1;
@@ -54,6 +54,7 @@ impl<'a> SceneHandle<'a> {
         body_id
     }
 
+    /// Add joint for this scene.
     pub fn add_joint(&mut self, mut joint: Joint) -> u64 {
         let joint_id = self.engine.unique_id;
         self.engine.unique_id += 1;
@@ -68,20 +69,24 @@ impl<'a> SceneHandle<'a> {
         joint_id
     }
 
+    /// Set window event listener for this scene.
     pub fn set_event_listener(&mut self, listener: Rc<dyn Fn(SceneHandle, WindowEvent)>) {
         let scene = self.engine.scene_mp.get_mut(&self.scene_id).unwrap();
         scene.on_event = Some(listener);
     }
 
+    /// Set step listener for this scene.
     pub fn set_step_listener(&mut self, listener: Rc<dyn Fn(SceneHandle, u128)>) {
         let scene = self.engine.scene_mp.get_mut(&self.scene_id).unwrap();
         scene.on_step = Some(listener);
     }
 
+    /// Bind wathcher to a body.
     pub fn bind_watcher(&mut self, body_id: u64) {
         self.engine.watcher_binding_body_id = body_id
     }
 
+    /// Set collision event handler for this scene.
     pub fn set_collision_event_handler(
         &mut self,
         event_handler: Rc<dyn Fn(SceneHandle, CollisionEvent)>,
@@ -90,6 +95,7 @@ impl<'a> SceneHandle<'a> {
         scene.on_collision_event = Some(event_handler);
     }
 
+    /// Set force event handler for this scene.
     pub fn set_force_event_handler(
         &mut self,
         event_handler: Rc<dyn Fn(SceneHandle, ContactForceEvent)>,
@@ -98,14 +104,17 @@ impl<'a> SceneHandle<'a> {
         scene.on_force_event = Some(event_handler);
     }
 
+    /// Get the engine.
     pub fn get_engine(&self) -> &Engine {
         &self.engine
     }
 
+    /// Get the engine.
     pub fn get_engine_mut(&mut self) -> &mut Engine {
         &mut self.engine
     }
 
+    /// Get the body id of specified collider.
     pub fn get_body_id_of_collider(&self, ch: ColliderHandle) -> u64 {
         let scene = self.engine.scene_mp.get(&self.scene_id).unwrap();
         let rigid_body = &scene.physics_engine.rigid_body_set
@@ -113,14 +122,17 @@ impl<'a> SceneHandle<'a> {
         rigid_body.user_data as u64
     }
 
+    /// Get body by id.
     pub fn get_body_mut(&mut self, id: &u64) -> Option<&mut Body> {
         self.engine.body_mp.get_mut(id)
     }
 
+    /// Get body by id.
     pub fn get_body(&self, id: &u64) -> Option<&Body> {
         self.engine.body_mp.get(id)
     }
 
+    /// Get body ids by class.
     pub fn get_body_id_v_by_class(&self, class: &str) -> Vec<u64> {
         match self.engine.body_index_mp.get(class) {
             Some(mp) => mp.iter().map(|(_, v)| *v).collect(),
@@ -128,6 +140,7 @@ impl<'a> SceneHandle<'a> {
         }
     }
 
+    /// Get body id by its class and name.
     pub fn get_body_id_by_class_name(&self, class: &str, name: &str) -> Option<u64> {
         self.engine
             .body_index_mp
@@ -136,8 +149,33 @@ impl<'a> SceneHandle<'a> {
             .map(|id| *id)
     }
 
+    /// Get the collider by its handle
     pub fn get_collider(&self, h: ColliderHandle) -> Option<&Collider> {
         let scene = self.engine.scene_mp.get(&self.scene_id).unwrap();
         scene.physics_engine.collider_set.get(h)
+    }
+
+    /// Find the closest intersection between a ray and a set of collider.
+    ///
+    /// # Parameters
+    /// * `ray`: the ray to cast.
+    /// * `max_toi`: the maximum time-of-impact that can be reported by this cast. This effectively
+    ///   limits the length of the ray to `ray.dir.norm() * max_toi`. Use `Real::MAX` for an unbounded ray.
+    /// * `solid`: if this is `true` an impact at time 0.0 (i.e. at the ray origin) is returned if
+    ///            it starts inside of a shape. If this `false` then the ray will hit the shape's boundary
+    ///            even if its starts inside of it.
+    /// * `filter`: set of rules used to determine which collider is taken into account by this scene query.
+    /// # Return
+    /// * `None`: if not found.
+    /// * `Some((ColliderHandle, Real))`: the collider and the distance.
+    pub fn cast_ray(
+        &self,
+        ray: &Ray,
+        max_toi: Real,
+        solid: bool,
+        filter: QueryFilter,
+    ) -> Option<(ColliderHandle, Real)> {
+        let scene = self.engine.scene_mp.get(&self.scene_id).unwrap();
+        scene.physics_engine.cast_ray(ray, max_toi, solid, filter)
     }
 }

@@ -1,4 +1,5 @@
-use rapier2d::prelude::*;
+use nalgebra::{Point2, Vector2};
+use rapier2d::{parry::query::Ray, prelude::*};
 
 pub struct PhysicsEngine {
     pub rigid_body_set: RigidBodySet,
@@ -89,5 +90,22 @@ impl PhysicsEngine {
 
     pub fn set_event_handler(&mut self, event_handler: Box<dyn EventHandler>) {
         self.event_handler = event_handler;
+    }
+
+    pub fn cast_ray(
+        &self,
+        ray: &Ray,
+        max_toi: Real,
+        solid: bool,
+        filter: QueryFilter,
+    ) -> Option<(ColliderHandle, Real)> {
+        self.query_pipeline.cast_ray(
+            &self.rigid_body_set,
+            &self.collider_set,
+            ray,
+            max_toi,
+            solid,
+            filter,
+        )
     }
 }
