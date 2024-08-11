@@ -1,4 +1,3 @@
-use nalgebra::{Point2, Vector2};
 use rapier2d::{parry::query::Ray, prelude::*};
 
 pub struct PhysicsEngine {

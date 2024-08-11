@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use cgmath::Point2;
+use nalgebra::Point2;
 
 #[derive(Clone)]
 pub struct Shape {
@@ -10,26 +10,11 @@ pub struct Shape {
 impl Shape {
     pub fn quad(w: f32, h: f32) -> Self {
         let point_v = vec![
-            Point2 {
-                x: -w * 0.5,
-                y: h * 0.5,
-            },
-            Point2 {
-                x: -w * 0.5,
-                y: -h * 0.5,
-            },
-            Point2 {
-                x: w * 0.5,
-                y: -h * 0.5,
-            },
-            Point2 {
-                x: w * 0.5,
-                y: h * 0.5,
-            },
-            Point2 {
-                x: -w * 0.5,
-                y: h * 0.5,
-            },
+            Point2::new(-w * 0.5, h * 0.5),
+            Point2::new(-w * 0.5, -h * 0.5),
+            Point2::new(w * 0.5, h * 0.5),
+            Point2::new(w * 0.5, h * 0.5),
+            Point2::new(-w * 0.5, h * 0.5),
         ];
         Self { point_v }
     }

@@ -7,18 +7,31 @@ mod structs;
 pub mod handle;
 
 use handle::SceneHandle;
+use nalgebra::{Matrix3, Vector2, Vector3};
 use rapier2d::prelude::{Collider, GenericJoint, RigidBody, RigidBodyHandle};
 
 use std::collections::HashMap;
 use wgpu::{Instance, Surface};
 
-use cgmath::{Matrix3, Vector2, Vector3};
 use winit::{dpi::PhysicalSize, event::WindowEvent, window::Window};
 
 use crate::{err, shape};
 
 #[derive(Clone)]
 pub struct BodyLook {
+    pub ray_look: Option<RayLook>,
+    pub light_look: Option<LightLook>,
+}
+
+#[derive(Clone)]
+pub struct LightLook {
+    pub shape: shape::Shape,
+    pub shape_matrix: Matrix3<f32>,
+    pub color: Vector3<f32>,
+}
+
+#[derive(Clone)]
+pub struct RayLook {
     pub shape: shape::Shape,
     pub shape_matrix: Matrix3<f32>,
     pub color: Vector3<f32>,
@@ -167,7 +180,7 @@ impl EngineBuilder {
         Ok(Engine {
             body_mp: HashMap::new(),
             ray_drawer,
-            watcher_drawer,
+            light_drawer: watcher_drawer,
             surface_drawer,
             unique_id: 0,
             device,
@@ -194,7 +207,7 @@ pub struct Engine {
     watcher_binding_body_id: u64,
 
     ray_drawer: drawer::RayDrawer,
-    watcher_drawer: drawer::WathcerDrawer,
+    light_drawer: drawer::WathcerDrawer,
     surface_drawer: drawer::SurfaceDrawer,
 
     surface: wgpu::Surface<'static>,
@@ -276,13 +289,13 @@ impl Engine {
                 self.ray_drawer.get_size_buffer(),
             )?;
             // Draw watcher to surface
-            self.watcher_drawer.draw_wathcer_to_surface(
+            self.light_drawer.draw_light_to_surface(
                 &self.device,
                 &self.queue,
                 &view,
                 self.ray_drawer.get_watcher_buffer(),
                 self.ray_drawer.get_size_buffer(),
-                &inner::gen_watcher_line_v(self),
+                &inner::gen_light_line_v(self),
             )?;
         }
         output.present();
@@ -328,42 +341,50 @@ impl Engine {
 }
 
 mod inner {
-    use cgmath::{Matrix3, Point2, Rad, Transform, Vector2};
+    use nalgebra::{Matrix3, Point2, Vector2};
 
     use super::{
         structs::{Line, LineIn},
         Engine,
     };
 
-    pub fn gen_watcher_line_v(engine: &Engine) -> Vec<LineIn> {
-        let scene = &engine.scene_mp[&engine.cur_scene_id];
-        let body = &engine.body_mp[&engine.watcher_binding_body_id];
-        let rigid_body = &scene.physics_engine.rigid_body_set[body.rigid];
+    pub fn gen_light_line_v(engine: &Engine) -> Vec<LineIn> {
         let mut line_v = Vec::new();
-
-        let body_matrix = {
-            let position = rigid_body.translation();
-            let angle = rigid_body.rotation().angle();
-            let body_matrix = Matrix3::from_translation(Vector2::new(position.x, position.y))
-                * Matrix3::from_angle_z(Rad(angle));
-            body_matrix
-        };
-        let matrix = body_matrix * body.look.shape_matrix;
-        let point_v = body
-            .look
-            .shape
-            .point_v
-            .iter()
-            .map(|point| matrix.transform_point(*point))
-            .collect::<Vec<Point2<f32>>>();
-        if point_v.is_empty() {
-            return line_v;
-        }
-        for pt in &point_v {
-            line_v.push(LineIn {
-                position: [pt.x, pt.y],
-                color: body.look.color.into(),
-            });
+        let scene = &engine.scene_mp[&engine.cur_scene_id];
+        for (_, rigid_body) in scene.physics_engine.rigid_body_set.iter() {
+            let body_id = rigid_body.user_data as u64;
+            if let Some(body_look) = &engine.body_mp[&body_id].look.light_look {
+                let body_matrix = {
+                    let position = rigid_body.translation();
+                    let angle = rigid_body.rotation().angle();
+                    let body_matrix =
+                        Matrix3::new_translation(&Vector2::new(position.x, position.y))
+                            * Matrix3::new_rotation(angle);
+                    body_matrix
+                };
+                let matrix = body_matrix * body_look.shape_matrix;
+                let point_v = body_look
+                    .shape
+                    .point_v
+                    .iter()
+                    .map(|point| matrix.transform_point(point))
+                    .collect::<Vec<Point2<f32>>>();
+                if point_v.is_empty() {
+                    return line_v;
+                }
+                for i in 0..point_v.len() - 1 {
+                    let sp = point_v[i];
+                    let ep = point_v[i + 1];
+                    line_v.push(LineIn {
+                        position: [sp.x, sp.y],
+                        color: body_look.color.into(),
+                    });
+                    line_v.push(LineIn {
+                        position: [ep.x, ep.y],
+                        color: body_look.color.into(),
+                    });
+                }
+            }
         }
 
         line_v
@@ -374,41 +395,38 @@ mod inner {
         let mut line_v = Vec::new();
         for (_, rigid_body) in scene.physics_engine.rigid_body_set.iter() {
             let body_id = rigid_body.user_data as u64;
-            if body_id == engine.watcher_binding_body_id {
-                // Watcher need not to be draw in ray trace pipeline.
-                continue;
-            }
-
-            let body_matrix = {
-                let position = rigid_body.translation();
-                let angle = rigid_body.rotation().angle();
-                let body_matrix = Matrix3::from_translation(Vector2::new(position.x, position.y))
-                    * Matrix3::from_angle_z(Rad(angle));
-                body_matrix
-            };
-            let body_look = &engine.body_mp[&body_id].look;
-            let matrix = body_matrix * body_look.shape_matrix;
-            let point_v = body_look
-                .shape
-                .point_v
-                .iter()
-                .map(|point| matrix.transform_point(*point))
-                .collect::<Vec<Point2<f32>>>();
-            if point_v.is_empty() {
-                continue;
-            }
-            for i in 0..point_v.len() - 1 {
-                let sp = point_v[i];
-                let ep = point_v[i + 1];
-                line_v.push(Line {
-                    sp: sp.into(),
-                    ep: ep.into(),
-                    light: body_look.light,
-                    color: body_look.color.into(),
-                    roughness: body_look.roughness,
-                    seed: body_look.seed + i as f32,
-                    ..Default::default()
-                });
+            if let Some(body_look) = &engine.body_mp[&body_id].look.ray_look {
+                let body_matrix = {
+                    let position = rigid_body.translation();
+                    let angle = rigid_body.rotation().angle();
+                    let body_matrix =
+                        Matrix3::new_translation(&Vector2::new(position.x, position.y))
+                            * Matrix3::new_rotation(angle);
+                    body_matrix
+                };
+                let matrix = body_matrix * body_look.shape_matrix;
+                let point_v = body_look
+                    .shape
+                    .point_v
+                    .iter()
+                    .map(|point| matrix.transform_point(point))
+                    .collect::<Vec<Point2<f32>>>();
+                if point_v.is_empty() {
+                    continue;
+                }
+                for i in 0..point_v.len() - 1 {
+                    let sp = point_v[i];
+                    let ep = point_v[i + 1];
+                    line_v.push(Line {
+                        sp: sp.into(),
+                        ep: ep.into(),
+                        light: body_look.light,
+                        color: body_look.color.into(),
+                        roughness: body_look.roughness,
+                        seed: body_look.seed + i as f32,
+                        ..Default::default()
+                    });
+                }
             }
         }
         line_v

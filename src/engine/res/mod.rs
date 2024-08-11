@@ -72,10 +72,10 @@ mod inner {
     impl EventHandler for InnerEventHandler {
         fn handle_collision_event(
             &self,
-            bodies: &rapier2d::prelude::RigidBodySet,
-            colliders: &rapier2d::prelude::ColliderSet,
+            _bodies: &rapier2d::prelude::RigidBodySet,
+            _colliders: &rapier2d::prelude::ColliderSet,
             event: rapier2d::prelude::CollisionEvent,
-            contact_pair: Option<&rapier2d::prelude::ContactPair>,
+            _contact_pair: Option<&rapier2d::prelude::ContactPair>,
         ) {
             let _ = self.collision_sender.send(event);
             log::debug!("sent collision_event");
@@ -84,8 +84,8 @@ mod inner {
         fn handle_contact_force_event(
             &self,
             dt: f32,
-            bodies: &rapier2d::prelude::RigidBodySet,
-            colliders: &rapier2d::prelude::ColliderSet,
+            _bodies: &rapier2d::prelude::RigidBodySet,
+            _colliders: &rapier2d::prelude::ColliderSet,
             contact_pair: &rapier2d::prelude::ContactPair,
             total_force_magnitude: f32,
         ) {

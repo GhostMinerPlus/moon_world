@@ -391,7 +391,7 @@ impl WathcerDrawer {
             }),
             &[LineIn::desc()],
             config.format,
-            wgpu::PrimitiveTopology::LineStrip,
+            wgpu::PrimitiveTopology::LineList,
         );
         Self {
             line_render_pipeline,
@@ -400,14 +400,14 @@ impl WathcerDrawer {
     }
 
     ///
-    pub fn draw_wathcer_to_surface<'a>(
+    pub fn draw_light_to_surface<'a>(
         &self,
         device: &Device,
         queue: &Queue,
         view: &TextureView,
         watcher_buffer: &Buffer,
         size_buffer: &Buffer,
-        watcher_line_v: &[LineIn],
+        line_v: &[LineIn],
     ) -> err::Result<()> {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Render Encoder"),
@@ -450,11 +450,11 @@ impl WathcerDrawer {
 
             let buffer = device.create_buffer_init(&BufferInitDescriptor {
                 label: None,
-                contents: bytemuck::cast_slice(watcher_line_v),
+                contents: bytemuck::cast_slice(line_v),
                 usage: BufferUsages::VERTEX,
             });
             render_pass.set_vertex_buffer(0, buffer.slice(..));
-            render_pass.draw(0..watcher_line_v.len() as u32, 0..1);
+            render_pass.draw(0..line_v.len() as u32, 0..1);
             // denoise
         }
         queue.submit(std::iter::once(encoder.finish()));
