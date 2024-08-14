@@ -8,18 +8,18 @@ use winit::event::WindowEvent;
 
 use super::{handle::SceneHandle, physics, structs};
 
-pub struct Scene {
+pub struct Scene<T> {
     pub physics_engine: physics::PhysicsEngine,
     pub watcher: structs::Watcher,
-    pub on_event: Option<Rc<dyn Fn(SceneHandle, WindowEvent)>>,
-    pub on_collision_event: Option<Rc<dyn Fn(SceneHandle, CollisionEvent)>>,
-    pub on_force_event: Option<Rc<dyn Fn(SceneHandle, ContactForceEvent)>>,
-    pub on_step: Option<Rc<dyn Fn(SceneHandle, u128)>>,
+    pub on_event: Option<Rc<dyn Fn(SceneHandle<T>, WindowEvent)>>,
+    pub on_collision_event: Option<Rc<dyn Fn(SceneHandle<T>, CollisionEvent)>>,
+    pub on_force_event: Option<Rc<dyn Fn(SceneHandle<T>, ContactForceEvent)>>,
+    pub on_step: Option<Rc<dyn Fn(SceneHandle<T>, u128)>>,
     pub collision_event_rx: Receiver<CollisionEvent>,
     pub force_event_rx: Receiver<ContactForceEvent>,
 }
 
-impl Scene {
+impl<T> Scene<T> {
     pub fn new() -> Self {
         let (collision_sender, collision_event_rx) = channel();
         let (force_sender, force_event_rx) = channel();

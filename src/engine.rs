@@ -115,7 +115,11 @@ impl EngineBuilder {
         })
     }
 
-    pub async fn build(self) -> err::Result<Engine> {
+    pub async fn build<T: Default>(self) -> err::Result<Engine<T>> {
+        self.build_with(T::default()).await
+    }
+
+    pub async fn build_with<T>(self, user_data: T) -> err::Result<Engine<T>> {
         let adapter = self
             .instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -192,13 +196,14 @@ impl EngineBuilder {
             watcher_binding_body_id: 0,
             time_stamp: 0,
             body_index_mp: HashMap::new(),
+            user_data,
         })
     }
 }
 
-pub struct Engine {
+pub struct Engine<T> {
     unique_id: u64,
-    scene_mp: HashMap<u64, res::Scene>,
+    scene_mp: HashMap<u64, res::Scene<T>>,
     body_index_mp: HashMap<String, HashMap<String, u64>>,
     body_mp: HashMap<u64, Body>,
 
@@ -216,10 +221,11 @@ pub struct Engine {
     config: wgpu::SurfaceConfiguration,
 
     time_stamp: u128,
+    pub user_data: T,
 }
 
-impl Engine {
-    pub fn new_scene(&mut self) -> handle::SceneHandle {
+impl<T> Engine<T> {
+    pub fn new_scene(&mut self) -> handle::SceneHandle<T> {
         let scene_id = self.unique_id;
         self.scene_mp.insert(scene_id, res::Scene::new());
         self.unique_id += 1;
@@ -331,7 +337,7 @@ impl Engine {
         self.watcher_binding_body_id
     }
 
-    pub fn get_current_scene_handle_mut(&mut self) -> SceneHandle {
+    pub fn get_current_scene_handle_mut(&mut self) -> SceneHandle<T> {
         let scene_id = self.cur_scene_id;
         SceneHandle {
             engine: self,
@@ -348,7 +354,7 @@ mod inner {
         Engine,
     };
 
-    pub fn gen_light_line_v(engine: &Engine) -> Vec<LineIn> {
+    pub fn gen_light_line_v<T>(engine: &Engine<T>) -> Vec<LineIn> {
         let mut line_v = Vec::new();
         let scene = &engine.scene_mp[&engine.cur_scene_id];
         for (_, rigid_body) in scene.physics_engine.rigid_body_set.iter() {
@@ -390,7 +396,7 @@ mod inner {
         line_v
     }
 
-    pub fn gen_line_v(engine: &Engine) -> Vec<Line> {
+    pub fn gen_line_v<T>(engine: &Engine<T>) -> Vec<Line> {
         let scene = &engine.scene_mp[&engine.cur_scene_id];
         let mut line_v = Vec::new();
         for (_, rigid_body) in scene.physics_engine.rigid_body_set.iter() {
