@@ -13,7 +13,7 @@ use rapier2d::prelude::{Collider, GenericJoint, RigidBody, RigidBodyHandle};
 use std::collections::HashMap;
 use wgpu::{Instance, Surface};
 
-use winit::{dpi::PhysicalSize, event::WindowEvent, window::Window};
+use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{err, shape};
 
@@ -115,11 +115,11 @@ impl EngineBuilder {
         })
     }
 
-    pub async fn build<T: Default>(self) -> err::Result<Engine<T>> {
-        self.build_with(T::default()).await
+    pub async fn build<D: Default, E>(self) -> err::Result<Engine<D, E>> {
+        self.build_with(D::default()).await
     }
 
-    pub async fn build_with<T>(self, user_data: T) -> err::Result<Engine<T>> {
+    pub async fn build_with<D, E>(self, user_data: D) -> err::Result<Engine<D, E>> {
         let adapter = self
             .instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -201,9 +201,9 @@ impl EngineBuilder {
     }
 }
 
-pub struct Engine<T> {
+pub struct Engine<D, E> {
     unique_id: u64,
-    scene_mp: HashMap<u64, res::Scene<T>>,
+    scene_mp: HashMap<u64, res::Scene<D, E>>,
     body_index_mp: HashMap<String, HashMap<String, u64>>,
     body_mp: HashMap<u64, Body>,
 
@@ -221,11 +221,11 @@ pub struct Engine<T> {
     config: wgpu::SurfaceConfiguration,
 
     time_stamp: u128,
-    pub user_data: T,
+    pub user_data: D,
 }
 
-impl<T> Engine<T> {
-    pub fn new_scene(&mut self) -> handle::SceneHandle<T> {
+impl<D, E> Engine<D, E> {
+    pub fn new_scene(&mut self) -> handle::SceneHandle<D, E> {
         let scene_id = self.unique_id;
         self.scene_mp.insert(scene_id, res::Scene::new());
         self.unique_id += 1;
@@ -309,7 +309,7 @@ impl<T> Engine<T> {
         Ok(())
     }
 
-    pub fn on_user_event(&mut self, event: WindowEvent) {
+    pub fn on_user_event(&mut self, event: E) {
         let scene = self.scene_mp.get(&self.cur_scene_id).unwrap();
         if scene.on_event.is_none() {
             return;
@@ -337,7 +337,7 @@ impl<T> Engine<T> {
         self.watcher_binding_body_id
     }
 
-    pub fn get_current_scene_handle_mut(&mut self) -> SceneHandle<T> {
+    pub fn get_current_scene_handle_mut(&mut self) -> SceneHandle<D, E> {
         let scene_id = self.cur_scene_id;
         SceneHandle {
             engine: self,
@@ -354,7 +354,7 @@ mod inner {
         Engine,
     };
 
-    pub fn gen_light_line_v<T>(engine: &Engine<T>) -> Vec<LineIn> {
+    pub fn gen_light_line_v<D, E>(engine: &Engine<D, E>) -> Vec<LineIn> {
         let mut line_v = Vec::new();
         let scene = &engine.scene_mp[&engine.cur_scene_id];
         for (_, rigid_body) in scene.physics_engine.rigid_body_set.iter() {
@@ -396,7 +396,7 @@ mod inner {
         line_v
     }
 
-    pub fn gen_line_v<T>(engine: &Engine<T>) -> Vec<Line> {
+    pub fn gen_line_v<D, E>(engine: &Engine<D, E>) -> Vec<Line> {
         let scene = &engine.scene_mp[&engine.cur_scene_id];
         let mut line_v = Vec::new();
         for (_, rigid_body) in scene.physics_engine.rigid_body_set.iter() {

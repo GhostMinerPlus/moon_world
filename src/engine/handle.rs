@@ -1,17 +1,16 @@
 use std::{collections::HashMap, rc::Rc};
 
 use rapier2d::prelude::{Collider, ColliderHandle, CollisionEvent, ContactForceEvent, QueryFilter, Ray, Real};
-use winit::event::WindowEvent;
 
 use super::{Body, BodyBuilder, Engine, Joint};
 
 /// Scene
-pub struct SceneHandle<'a, T> {
-    pub(crate) engine: &'a mut Engine<T>,
+pub struct SceneHandle<'a, D, E> {
+    pub(crate) engine: &'a mut Engine<D, E>,
     pub(crate) scene_id: u64,
 }
 
-impl<'a, T> SceneHandle<'a, T> {
+impl<'a, D, E> SceneHandle<'a, D, E> {
     /// Get scene id.
     pub fn scene_id(&self) -> u64 {
         return self.scene_id;
@@ -70,13 +69,13 @@ impl<'a, T> SceneHandle<'a, T> {
     }
 
     /// Set window event listener for this scene.
-    pub fn set_event_listener(&mut self, listener: Rc<dyn Fn(SceneHandle<T>, WindowEvent)>) {
+    pub fn set_event_listener(&mut self, listener: Rc<dyn Fn(SceneHandle<D, E>, E)>) {
         let scene = self.engine.scene_mp.get_mut(&self.scene_id).unwrap();
         scene.on_event = Some(listener);
     }
 
     /// Set step listener for this scene.
-    pub fn set_step_listener(&mut self, listener: Rc<dyn Fn(SceneHandle<T>, u128)>) {
+    pub fn set_step_listener(&mut self, listener: Rc<dyn Fn(SceneHandle<D, E>, u128)>) {
         let scene = self.engine.scene_mp.get_mut(&self.scene_id).unwrap();
         scene.on_step = Some(listener);
     }
@@ -89,7 +88,7 @@ impl<'a, T> SceneHandle<'a, T> {
     /// Set collision event handler for this scene.
     pub fn set_collision_event_handler(
         &mut self,
-        event_handler: Rc<dyn Fn(SceneHandle<T>, CollisionEvent)>,
+        event_handler: Rc<dyn Fn(SceneHandle<D, E>, CollisionEvent)>,
     ) {
         let scene = self.engine.scene_mp.get_mut(&self.scene_id).unwrap();
         scene.on_collision_event = Some(event_handler);
@@ -98,19 +97,19 @@ impl<'a, T> SceneHandle<'a, T> {
     /// Set force event handler for this scene.
     pub fn set_force_event_handler(
         &mut self,
-        event_handler: Rc<dyn Fn(SceneHandle<T>, ContactForceEvent)>,
+        event_handler: Rc<dyn Fn(SceneHandle<D, E>, ContactForceEvent)>,
     ) {
         let scene = self.engine.scene_mp.get_mut(&self.scene_id).unwrap();
         scene.on_force_event = Some(event_handler);
     }
 
     /// Get the engine.
-    pub fn get_engine(&self) -> &Engine<T> {
+    pub fn get_engine(&self) -> &Engine<D, E> {
         &self.engine
     }
 
     /// Get the engine.
-    pub fn get_engine_mut(&mut self) -> &mut Engine<T> {
+    pub fn get_engine_mut(&mut self) -> &mut Engine<D, E> {
         &mut self.engine
     }
 

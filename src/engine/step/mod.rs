@@ -1,6 +1,6 @@
 use super::Engine;
 
-pub fn step<T>(engine: &mut Engine<T>) {
+pub fn step<D, E>(engine: &mut Engine<D, E>) {
     inner::clean_dead(engine);
 
     engine
@@ -19,7 +19,7 @@ pub fn step<T>(engine: &mut Engine<T>) {
 mod inner {
     use crate::engine::{handle::SceneHandle, Engine};
 
-    pub fn clean_dead<T>(engine: &mut Engine<T>) {
+    pub fn clean_dead<D, E>(engine: &mut Engine<D, E>) {
         let scene = engine.scene_mp.get_mut(&engine.cur_scene_id).unwrap();
         let dead_id_v = engine
             .body_mp
@@ -42,7 +42,7 @@ mod inner {
         }
     }
 
-    pub fn pull_collision_event<T>(engine: &mut Engine<T>) {
+    pub fn pull_collision_event<D, E>(engine: &mut Engine<D, E>) {
         let scene_id = engine.cur_scene_id;
         loop {
             let scene = engine.scene_mp.get(&scene_id).unwrap();
@@ -56,7 +56,7 @@ mod inner {
         }
     }
 
-    pub fn pull_force_event<T>(engine: &mut Engine<T>) {
+    pub fn pull_force_event<D, E>(engine: &mut Engine<D, E>) {
         let scene_id = engine.cur_scene_id;
         loop {
             let scene = engine.scene_mp.get(&scene_id).unwrap();
@@ -75,7 +75,7 @@ mod inner {
         }
     }
 
-    pub fn on_step<T>(engine: &mut Engine<T>) {
+    pub fn on_step<D, E>(engine: &mut Engine<D, E>) {
         let scene_id = engine.cur_scene_id;
         let time_stamp = engine.time_stamp;
         let scene = engine.scene_mp.get(&scene_id).unwrap();

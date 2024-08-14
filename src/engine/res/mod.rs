@@ -4,22 +4,21 @@ use std::{
 };
 
 use rapier2d::prelude::{CollisionEvent, ContactForceEvent};
-use winit::event::WindowEvent;
 
 use super::{handle::SceneHandle, physics, structs};
 
-pub struct Scene<T> {
+pub struct Scene<D, E> {
     pub physics_engine: physics::PhysicsEngine,
     pub watcher: structs::Watcher,
-    pub on_event: Option<Rc<dyn Fn(SceneHandle<T>, WindowEvent)>>,
-    pub on_collision_event: Option<Rc<dyn Fn(SceneHandle<T>, CollisionEvent)>>,
-    pub on_force_event: Option<Rc<dyn Fn(SceneHandle<T>, ContactForceEvent)>>,
-    pub on_step: Option<Rc<dyn Fn(SceneHandle<T>, u128)>>,
+    pub on_event: Option<Rc<dyn Fn(SceneHandle<D, E>, E)>>,
+    pub on_collision_event: Option<Rc<dyn Fn(SceneHandle<D, E>, CollisionEvent)>>,
+    pub on_force_event: Option<Rc<dyn Fn(SceneHandle<D, E>, ContactForceEvent)>>,
+    pub on_step: Option<Rc<dyn Fn(SceneHandle<D, E>, u128)>>,
     pub collision_event_rx: Receiver<CollisionEvent>,
     pub force_event_rx: Receiver<ContactForceEvent>,
 }
 
-impl<T> Scene<T> {
+impl<D, E> Scene<D, E> {
     pub fn new() -> Self {
         let (collision_sender, collision_event_rx) = channel();
         let (force_sender, force_event_rx) = channel();
