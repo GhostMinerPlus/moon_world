@@ -19,8 +19,8 @@ use crate::{err, shape};
 
 #[derive(Clone)]
 pub struct BodyLook {
-    pub ray_look: Option<RayLook>,
-    pub light_look: Option<LightLook>,
+    pub ray_look: Vec<RayLook>,
+    pub light_look: Vec<LightLook>,
 }
 
 #[derive(Clone)]
@@ -359,7 +359,7 @@ mod inner {
         let scene = &engine.scene_mp[&engine.cur_scene_id];
         for (_, rigid_body) in scene.physics_engine.rigid_body_set.iter() {
             let body_id = rigid_body.user_data as u64;
-            if let Some(body_look) = &engine.body_mp[&body_id].look.light_look {
+            for body_look in &engine.body_mp[&body_id].look.light_look {
                 let body_matrix = {
                     let position = rigid_body.translation();
                     let angle = rigid_body.rotation().angle();
@@ -401,7 +401,7 @@ mod inner {
         let mut line_v = Vec::new();
         for (_, rigid_body) in scene.physics_engine.rigid_body_set.iter() {
             let body_id = rigid_body.user_data as u64;
-            if let Some(body_look) = &engine.body_mp[&body_id].look.ray_look {
+            for body_look in &engine.body_mp[&body_id].look.ray_look {
                 let body_matrix = {
                     let position = rigid_body.translation();
                     let angle = rigid_body.rotation().angle();
