@@ -1,6 +1,6 @@
 use std::{collections::HashMap, rc::Rc};
 
-use rapier2d::prelude::{Collider, ColliderHandle, CollisionEvent, ContactForceEvent, QueryFilter, Ray, Real};
+use rapier2d::prelude::{Collider, ColliderHandle, CollisionEvent, ContactForceEvent, QueryFilter, Ray, Real, RigidBody, RigidBodyHandle};
 
 use super::{Body, BodyBuilder, Engine, Joint};
 
@@ -176,5 +176,15 @@ impl<'a, D, E> SceneHandle<'a, D, E> {
     ) -> Option<(ColliderHandle, Real)> {
         let scene = self.engine.scene_mp.get(&self.scene_id).unwrap();
         scene.physics_engine.cast_ray(ray, max_toi, solid, filter)
+    }
+
+    pub fn get_rigid_body(&self, h: RigidBodyHandle) -> Option<&RigidBody> {
+        let scene = self.engine.scene_mp.get(&self.scene_id).unwrap();
+        scene.physics_engine.rigid_body_set.get(h)
+    }
+
+    pub fn get_rigid_body_mut(&mut self, h: RigidBodyHandle) -> Option<&mut RigidBody> {
+        let scene = self.engine.scene_mp.get_mut(&self.scene_id).unwrap();
+        scene.physics_engine.rigid_body_set.get_mut(h)
     }
 }
