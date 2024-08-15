@@ -28,6 +28,7 @@ pub struct LightLook {
     pub shape: shape::Shape,
     pub shape_matrix: Matrix3<f32>,
     pub color: Vector3<f32>,
+    pub is_visible: bool,
 }
 
 #[derive(Clone)]
@@ -38,6 +39,7 @@ pub struct RayLook {
     pub light: f32,
     pub roughness: f32,
     pub seed: f32,
+    pub is_visible: bool,
 }
 
 #[derive(Clone)]
@@ -360,6 +362,9 @@ mod inner {
         for (_, rigid_body) in scene.physics_engine.rigid_body_set.iter() {
             let body_id = rigid_body.user_data as u64;
             for body_look in &engine.body_mp[&body_id].look.light_look {
+                if !body_look.is_visible {
+                    continue;
+                }
                 let body_matrix = {
                     let position = rigid_body.translation();
                     let angle = rigid_body.rotation().angle();
@@ -402,6 +407,9 @@ mod inner {
         for (_, rigid_body) in scene.physics_engine.rigid_body_set.iter() {
             let body_id = rigid_body.user_data as u64;
             for body_look in &engine.body_mp[&body_id].look.ray_look {
+                if !body_look.is_visible {
+                    continue;
+                }
                 let body_matrix = {
                     let position = rigid_body.translation();
                     let angle = rigid_body.rotation().angle();
