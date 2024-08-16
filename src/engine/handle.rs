@@ -1,6 +1,9 @@
 use std::{collections::HashMap, rc::Rc};
 
-use rapier2d::prelude::{Collider, ColliderHandle, CollisionEvent, ContactForceEvent, QueryFilter, Ray, Real, RigidBody, RigidBodyHandle};
+use rapier2d::prelude::{
+    Collider, ColliderHandle, CollisionEvent, ContactForceEvent, QueryFilter, Ray, Real, RigidBody,
+    RigidBodyHandle,
+};
 
 use super::{Body, BodyBuilder, Engine, Joint};
 
@@ -114,11 +117,13 @@ impl<'a, D, E> SceneHandle<'a, D, E> {
     }
 
     /// Get the body id of specified collider.
-    pub fn get_body_id_of_collider(&self, ch: ColliderHandle) -> u64 {
-        let scene = self.engine.scene_mp.get(&self.scene_id).unwrap();
-        let rigid_body = &scene.physics_engine.rigid_body_set
-            [scene.physics_engine.collider_set[ch].parent().unwrap()];
-        rigid_body.user_data as u64
+    pub fn get_body_id_of_collider(&self, ch: ColliderHandle) -> Option<u64> {
+        let scene = self.engine.scene_mp.get(&self.scene_id)?;
+        let rigid_body = scene
+            .physics_engine
+            .rigid_body_set
+            .get(scene.physics_engine.collider_set.get(ch)?.parent()?)?;
+        Some(rigid_body.user_data as u64)
     }
 
     /// Get body by id.
