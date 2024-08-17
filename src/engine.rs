@@ -1,14 +1,7 @@
-mod drawer;
-mod physics;
-mod res;
-mod step;
-mod structs;
-
-pub mod handle;
-
 use handle::SceneHandle;
 use nalgebra::{Matrix3, Vector2, Vector3};
 use rapier2d::prelude::{Collider, GenericJoint, RigidBody, RigidBodyHandle};
+use rodio::{cpal::FromSample, OutputStream, OutputStreamHandle, Sample, Sink, Source};
 
 use std::collections::HashMap;
 use wgpu::{Instance, Surface};
@@ -16,6 +9,112 @@ use wgpu::{Instance, Surface};
 use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{err, shape};
+
+mod drawer;
+mod physics;
+mod res;
+mod step;
+mod structs;
+mod inner {
+    use nalgebra::{Matrix3, Point2, Vector2};
+
+    use super::{
+        structs::{Line, LineIn},
+        Engine,
+    };
+
+    pub fn gen_light_line_v<D, E>(engine: &Engine<D, E>) -> Vec<LineIn> {
+        let mut line_v = Vec::new();
+        let scene = &engine.scene_mp[&engine.cur_scene_id];
+        for (_, rigid_body) in scene.physics_engine.rigid_body_set.iter() {
+            let body_id = rigid_body.user_data as u64;
+            for body_look in &engine.body_mp[&body_id].look.light_look {
+                if !body_look.is_visible {
+                    continue;
+                }
+                let body_matrix = {
+                    let position = rigid_body.translation();
+                    let angle = rigid_body.rotation().angle();
+                    let body_matrix =
+                        Matrix3::new_translation(&Vector2::new(position.x, position.y))
+                            * Matrix3::new_rotation(angle);
+                    body_matrix
+                };
+                let matrix = body_matrix * body_look.shape_matrix;
+                let point_v = body_look
+                    .shape
+                    .point_v
+                    .iter()
+                    .map(|point| matrix.transform_point(point))
+                    .collect::<Vec<Point2<f32>>>();
+                if point_v.is_empty() {
+                    return line_v;
+                }
+                for i in 0..point_v.len() - 1 {
+                    let sp = point_v[i];
+                    let ep = point_v[i + 1];
+                    line_v.push(LineIn {
+                        position: [sp.x, sp.y],
+                        color: body_look.color.into(),
+                    });
+                    line_v.push(LineIn {
+                        position: [ep.x, ep.y],
+                        color: body_look.color.into(),
+                    });
+                }
+            }
+        }
+
+        line_v
+    }
+
+    pub fn gen_line_v<D, E>(engine: &Engine<D, E>) -> Vec<Line> {
+        let scene = &engine.scene_mp[&engine.cur_scene_id];
+        let mut line_v = Vec::new();
+        for (_, rigid_body) in scene.physics_engine.rigid_body_set.iter() {
+            let body_id = rigid_body.user_data as u64;
+            for body_look in &engine.body_mp[&body_id].look.ray_look {
+                if !body_look.is_visible {
+                    continue;
+                }
+                let body_matrix = {
+                    let position = rigid_body.translation();
+                    let angle = rigid_body.rotation().angle();
+                    let body_matrix =
+                        Matrix3::new_translation(&Vector2::new(position.x, position.y))
+                            * Matrix3::new_rotation(angle);
+                    body_matrix
+                };
+                let matrix = body_matrix * body_look.shape_matrix;
+                let point_v = body_look
+                    .shape
+                    .point_v
+                    .iter()
+                    .map(|point| matrix.transform_point(point))
+                    .collect::<Vec<Point2<f32>>>();
+                if point_v.is_empty() {
+                    continue;
+                }
+                for i in 0..point_v.len() - 1 {
+                    let sp = point_v[i];
+                    let ep = point_v[i + 1];
+                    line_v.push(Line {
+                        sp: sp.into(),
+                        ep: ep.into(),
+                        light: body_look.light,
+                        color: body_look.color.into(),
+                        roughness: body_look.roughness,
+                        seed: body_look.seed + i as f32,
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+        line_v
+    }
+}
+
+pub mod handle;
 
 #[derive(Clone)]
 pub struct BodyLook {
@@ -183,6 +282,8 @@ impl EngineBuilder {
 
         let ray_drawer = drawer::RayDrawer::new(&device, self.size);
 
+        let (_stream, output_stream_handle) = OutputStream::try_default().unwrap();
+
         Ok(Engine {
             body_mp: HashMap::new(),
             ray_drawer,
@@ -198,6 +299,7 @@ impl EngineBuilder {
             watcher_binding_body_id: 0,
             time_stamp: 0,
             body_index_mp: HashMap::new(),
+            output_stream_handle,
             user_data,
         })
     }
@@ -223,6 +325,9 @@ pub struct Engine<D, E> {
     config: wgpu::SurfaceConfiguration,
 
     time_stamp: u128,
+
+    output_stream_handle: OutputStreamHandle,
+
     pub user_data: D,
 }
 
@@ -346,103 +451,40 @@ impl<D, E> Engine<D, E> {
             scene_id,
         }
     }
+
+    /// Mix a sound into this engine.
+    pub fn mix_sound<S>(&self, source: S)
+    where
+        S: Source + Send + 'static,
+        f32: FromSample<S::Item>,
+        S::Item: Sample + Send,
+    {
+        Sink::try_new(&self.output_stream_handle)
+            .unwrap()
+            .append(source);
+    }
 }
 
-mod inner {
-    use nalgebra::{Matrix3, Point2, Vector2};
+#[cfg(test)]
+mod test_rodio {
+    #[test]
+    fn test() {
+        use rodio::source::{SineWave, Source};
+        use rodio::{OutputStream, Sink};
+        use std::time::Duration;
 
-    use super::{
-        structs::{Line, LineIn},
-        Engine,
-    };
+        // _stream must live as long as the sink
+        let (_stream, stream_handle) = OutputStream::try_default().unwrap();
+        let sink = Sink::try_new(&stream_handle).unwrap();
 
-    pub fn gen_light_line_v<D, E>(engine: &Engine<D, E>) -> Vec<LineIn> {
-        let mut line_v = Vec::new();
-        let scene = &engine.scene_mp[&engine.cur_scene_id];
-        for (_, rigid_body) in scene.physics_engine.rigid_body_set.iter() {
-            let body_id = rigid_body.user_data as u64;
-            for body_look in &engine.body_mp[&body_id].look.light_look {
-                if !body_look.is_visible {
-                    continue;
-                }
-                let body_matrix = {
-                    let position = rigid_body.translation();
-                    let angle = rigid_body.rotation().angle();
-                    let body_matrix =
-                        Matrix3::new_translation(&Vector2::new(position.x, position.y))
-                            * Matrix3::new_rotation(angle);
-                    body_matrix
-                };
-                let matrix = body_matrix * body_look.shape_matrix;
-                let point_v = body_look
-                    .shape
-                    .point_v
-                    .iter()
-                    .map(|point| matrix.transform_point(point))
-                    .collect::<Vec<Point2<f32>>>();
-                if point_v.is_empty() {
-                    return line_v;
-                }
-                for i in 0..point_v.len() - 1 {
-                    let sp = point_v[i];
-                    let ep = point_v[i + 1];
-                    line_v.push(LineIn {
-                        position: [sp.x, sp.y],
-                        color: body_look.color.into(),
-                    });
-                    line_v.push(LineIn {
-                        position: [ep.x, ep.y],
-                        color: body_look.color.into(),
-                    });
-                }
-            }
-        }
+        // Add a dummy source of the sake of the example.
+        let source = SineWave::new(440.0)
+            .take_duration(Duration::from_secs_f32(0.25))
+            .amplify(0.20);
+        sink.append(source);
 
-        line_v
-    }
-
-    pub fn gen_line_v<D, E>(engine: &Engine<D, E>) -> Vec<Line> {
-        let scene = &engine.scene_mp[&engine.cur_scene_id];
-        let mut line_v = Vec::new();
-        for (_, rigid_body) in scene.physics_engine.rigid_body_set.iter() {
-            let body_id = rigid_body.user_data as u64;
-            for body_look in &engine.body_mp[&body_id].look.ray_look {
-                if !body_look.is_visible {
-                    continue;
-                }
-                let body_matrix = {
-                    let position = rigid_body.translation();
-                    let angle = rigid_body.rotation().angle();
-                    let body_matrix =
-                        Matrix3::new_translation(&Vector2::new(position.x, position.y))
-                            * Matrix3::new_rotation(angle);
-                    body_matrix
-                };
-                let matrix = body_matrix * body_look.shape_matrix;
-                let point_v = body_look
-                    .shape
-                    .point_v
-                    .iter()
-                    .map(|point| matrix.transform_point(point))
-                    .collect::<Vec<Point2<f32>>>();
-                if point_v.is_empty() {
-                    continue;
-                }
-                for i in 0..point_v.len() - 1 {
-                    let sp = point_v[i];
-                    let ep = point_v[i + 1];
-                    line_v.push(Line {
-                        sp: sp.into(),
-                        ep: ep.into(),
-                        light: body_look.light,
-                        color: body_look.color.into(),
-                        roughness: body_look.roughness,
-                        seed: body_look.seed + i as f32,
-                        ..Default::default()
-                    });
-                }
-            }
-        }
-        line_v
+        // The sound plays in a separate thread. This call will block the current thread until the sink
+        // has finished playing all its queued sounds.
+        sink.sleep_until_end();
     }
 }

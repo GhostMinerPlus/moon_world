@@ -1,11 +1,10 @@
 use std::{collections::HashMap, rc::Rc};
 
+use super::{Body, BodyBuilder, Engine, Joint};
 use rapier2d::prelude::{
     Collider, ColliderHandle, CollisionEvent, ContactForceEvent, QueryFilter, Ray, Real, RigidBody,
     RigidBodyHandle,
 };
-
-use super::{Body, BodyBuilder, Engine, Joint};
 
 /// Scene
 pub struct SceneHandle<'a, D, E> {
