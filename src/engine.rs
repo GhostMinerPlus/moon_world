@@ -455,15 +455,15 @@ impl<D, E> Engine<D, E> {
     }
 
     /// Mix a sound into this engine.
-    pub fn mix_sound<S>(&self, source: S)
+    pub fn mix_sound<S>(&self, source: S) -> Sink
     where
         S: Source + Send + 'static,
         f32: FromSample<S::Item>,
         S::Item: Sample + Send,
     {
-        Sink::try_new(&self.output_stream_handle)
-            .unwrap()
-            .append(source);
+        let sink = Sink::try_new(&self.output_stream_handle).unwrap();
+        sink.append(source);
+        sink
     }
 }
 
