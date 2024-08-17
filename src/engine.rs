@@ -282,7 +282,7 @@ impl EngineBuilder {
 
         let ray_drawer = drawer::RayDrawer::new(&device, self.size);
 
-        let (_stream, output_stream_handle) = OutputStream::try_default().unwrap();
+        let (output_stream, output_stream_handle) = OutputStream::try_default().unwrap();
 
         Ok(Engine {
             body_mp: HashMap::new(),
@@ -299,6 +299,7 @@ impl EngineBuilder {
             watcher_binding_body_id: 0,
             time_stamp: 0,
             body_index_mp: HashMap::new(),
+            _output_stream: output_stream,
             output_stream_handle,
             user_data,
         })
@@ -326,6 +327,7 @@ pub struct Engine<D, E> {
 
     time_stamp: u128,
 
+    _output_stream: OutputStream,
     output_stream_handle: OutputStreamHandle,
 
     pub user_data: D,
