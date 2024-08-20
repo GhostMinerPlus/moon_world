@@ -1,6 +1,6 @@
 use handle::SceneHandle;
 use nalgebra::{Matrix3, Vector2, Vector3};
-use rapier2d::prelude::{Collider, GenericJoint, RigidBody, RigidBodyHandle};
+use rapier2d::prelude::{Collider, GenericJoint, IntegrationParameters, RigidBody, RigidBodyHandle};
 use rodio::{cpal::FromSample, OutputStream, OutputStreamHandle, Sample, Sink, Source};
 
 use std::collections::HashMap;
@@ -334,9 +334,9 @@ pub struct Engine<D, E> {
 }
 
 impl<D, E> Engine<D, E> {
-    pub fn new_scene(&mut self) -> handle::SceneHandle<D, E> {
+    pub fn new_scene(&mut self, integration_parameters: IntegrationParameters) -> handle::SceneHandle<D, E> {
         let scene_id = self.unique_id;
-        self.scene_mp.insert(scene_id, res::Scene::new());
+        self.scene_mp.insert(scene_id, res::Scene::new(integration_parameters));
         self.unique_id += 1;
         handle::SceneHandle {
             engine: self,
