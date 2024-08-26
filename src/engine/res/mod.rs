@@ -1,5 +1,7 @@
 use std::{
-    collections::HashMap, rc::Rc, sync::mpsc::{channel, Receiver}
+    collections::HashMap,
+    rc::Rc,
+    sync::mpsc::{channel, Receiver},
 };
 
 use rapier2d::prelude::{CollisionEvent, ContactForceEvent, IntegrationParameters};
@@ -46,6 +48,15 @@ impl<D, E> Scene<D, E> {
 
     pub fn step(&mut self) {
         self.physics_engine.step();
+    }
+
+    pub fn remove_body(&mut self, id: &u64) {
+        if let Some(body) = self.body_mp.remove(id) {
+            if let Some(set) = self.body_index_mp.get_mut(&body.class) {
+                set.remove(&body.name);
+            }
+            self.physics_engine.remove_rigid_body(body.rigid);
+        }
     }
 }
 

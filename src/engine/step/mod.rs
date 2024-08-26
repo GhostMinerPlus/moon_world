@@ -37,8 +37,7 @@ mod inner {
             .map(|op| op.unwrap())
             .collect::<Vec<u64>>();
         for id in &dead_id_v {
-            let body = scene.body_mp.remove(id).unwrap();
-            scene.physics_engine.remove_rigid_body(body.rigid);
+            scene.remove_body(id);
         }
     }
 

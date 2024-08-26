@@ -192,13 +192,8 @@ impl<'a, D, E> SceneHandle<'a, D, E> {
         scene.physics_engine.rigid_body_set.get_mut(h)
     }
 
-    pub fn remove_body(&mut self, id: u64) {
+    pub fn remove_body(&mut self, id: &u64) {
         let scene = self.engine.scene_mp.get_mut(&self.scene_id).unwrap();
-        if let Some(body) = scene.body_mp.remove(&id) {
-            if let Some(set) = scene.body_index_mp.get_mut(&body.class) {
-                set.remove(&body.name);
-                scene.physics_engine.remove_rigid_body(body.rigid);
-            }
-        }
+        scene.remove_body(id)
     }
 }
