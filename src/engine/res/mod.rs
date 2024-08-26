@@ -2,7 +2,7 @@ use std::{
     collections::HashMap, rc::Rc, sync::mpsc::{channel, Receiver}
 };
 
-use rapier2d::prelude::{CollisionEvent, ContactForceEvent};
+use rapier2d::prelude::{CollisionEvent, ContactForceEvent, IntegrationParameters};
 
 use super::{handle::SceneHandle, physics, structs, Body};
 
@@ -20,10 +20,10 @@ pub struct Scene<D, E> {
 }
 
 impl<D, E> Scene<D, E> {
-    pub fn new() -> Self {
+    pub fn new(integration_parameters: IntegrationParameters) -> Self {
         let (collision_sender, collision_event_rx) = channel();
         let (force_sender, force_event_rx) = channel();
-        let mut physics_engine = physics::PhysicsEngine::new();
+        let mut physics_engine = physics::PhysicsEngine::new(integration_parameters);
         physics_engine.set_event_handler(Box::new(inner::InnerEventHandler::new(
             collision_sender,
             force_sender,

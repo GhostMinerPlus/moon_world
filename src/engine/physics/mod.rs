@@ -24,13 +24,12 @@ pub struct PhysicsEngine {
 }
 
 impl PhysicsEngine {
-    pub fn new() -> Self {
+    pub fn new(integration_parameters: IntegrationParameters) -> Self {
         let rigid_body_set = RigidBodySet::new();
         let collider_set = ColliderSet::new();
         let impulse_joint_set = ImpulseJointSet::new();
         let multibody_joint_set = MultibodyJointSet::new();
         let gravity = vector![0.0, -9.81];
-        let integration_parameters = IntegrationParameters::default();
         let physics_pipeline = PhysicsPipeline::new();
         let island_manager = IslandManager::new();
         let broad_phase = DefaultBroadPhase::new();
@@ -44,7 +43,6 @@ impl PhysicsEngine {
             collider_set,
             impulse_joint_set,
             multibody_joint_set,
-
             gravity,
             integration_parameters,
             physics_pipeline,
