@@ -28,7 +28,7 @@ mod inner {
         let scene = &engine.scene_mp[&engine.cur_scene_id];
         for (_, rigid_body) in scene.physics_engine.rigid_body_set.iter() {
             let body_id = rigid_body.user_data as u64;
-            for body_look in &engine.body_mp[&body_id].look.light_look {
+            for body_look in &scene.body_mp[&body_id].look.light_look {
                 if !body_look.is_visible {
                     continue;
                 }
@@ -73,7 +73,7 @@ mod inner {
         let mut line_v = Vec::new();
         for (_, rigid_body) in scene.physics_engine.rigid_body_set.iter() {
             let body_id = rigid_body.user_data as u64;
-            for body_look in &engine.body_mp[&body_id].look.ray_look {
+            for body_look in &scene.body_mp[&body_id].look.ray_look {
                 if !body_look.is_visible {
                     continue;
                 }
@@ -285,7 +285,6 @@ impl EngineBuilder {
         let (output_stream, output_stream_handle) = OutputStream::try_default().unwrap();
 
         Ok(Engine {
-            body_mp: HashMap::new(),
             ray_drawer,
             light_drawer: watcher_drawer,
             surface_drawer,
@@ -298,7 +297,6 @@ impl EngineBuilder {
             cur_scene_id: 0,
             watcher_binding_body_id: 0,
             time_stamp: 0,
-            body_index_mp: HashMap::new(),
             _output_stream: output_stream,
             output_stream_handle,
             user_data,
@@ -309,8 +307,6 @@ impl EngineBuilder {
 pub struct Engine<D, E> {
     unique_id: u64,
     scene_mp: HashMap<u64, res::Scene<D, E>>,
-    body_index_mp: HashMap<String, HashMap<String, u64>>,
-    body_mp: HashMap<u64, Body>,
 
     cur_scene_id: u64,
     /// The id of body which bound by the watcher
@@ -372,8 +368,8 @@ impl<D, E> Engine<D, E> {
 
         // Update Watcher
         let scene = self.scene_mp.get_mut(&self.cur_scene_id).unwrap();
-        let rigid_body =
-            &scene.physics_engine.rigid_body_set[self.body_mp[&self.watcher_binding_body_id].rigid];
+        let rigid_body = &scene.physics_engine.rigid_body_set
+            [scene.body_mp[&self.watcher_binding_body_id].rigid];
         let pos = rigid_body.translation();
         scene.watcher.position[0] = pos.x;
         scene.watcher.position[1] = pos.y;
@@ -439,7 +435,7 @@ impl<D, E> Engine<D, E> {
         scene
             .physics_engine
             .rigid_body_set
-            .get_mut(self.body_mp[&self.watcher_binding_body_id].rigid)
+            .get_mut(scene.body_mp[&self.watcher_binding_body_id].rigid)
     }
 
     pub fn get_watcher_binding_body_id(&self) -> u64 {

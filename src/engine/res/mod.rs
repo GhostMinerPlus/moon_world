@@ -1,11 +1,10 @@
 use std::{
-    rc::Rc,
-    sync::mpsc::{channel, Receiver},
+    collections::HashMap, rc::Rc, sync::mpsc::{channel, Receiver}
 };
 
 use rapier2d::prelude::{CollisionEvent, ContactForceEvent};
 
-use super::{handle::SceneHandle, physics, structs};
+use super::{handle::SceneHandle, physics, structs, Body};
 
 pub struct Scene<D, E> {
     pub physics_engine: physics::PhysicsEngine,
@@ -16,6 +15,8 @@ pub struct Scene<D, E> {
     pub on_step: Option<Rc<dyn Fn(SceneHandle<D, E>, u128)>>,
     pub collision_event_rx: Receiver<CollisionEvent>,
     pub force_event_rx: Receiver<ContactForceEvent>,
+    pub body_index_mp: HashMap<String, HashMap<String, u64>>,
+    pub body_mp: HashMap<u64, Body>,
 }
 
 impl<D, E> Scene<D, E> {
@@ -38,6 +39,8 @@ impl<D, E> Scene<D, E> {
             on_force_event: None,
             collision_event_rx,
             force_event_rx,
+            body_mp: HashMap::new(),
+            body_index_mp: HashMap::new(),
         }
     }
 

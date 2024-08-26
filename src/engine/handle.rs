@@ -25,7 +25,7 @@ impl<'a, D, E> SceneHandle<'a, D, E> {
         let scene = self.engine.scene_mp.get_mut(&self.scene_id).unwrap();
         body.rigid.user_data = body_id as u128;
         let body_handle = scene.physics_engine.rigid_body_set.insert(body.rigid);
-        self.engine.body_mp.insert(
+        scene.body_mp.insert(
             body_id,
             Body {
                 class: body.class.clone(),
@@ -35,14 +35,14 @@ impl<'a, D, E> SceneHandle<'a, D, E> {
                 life_step_op: body.life_step_op,
             },
         );
-        match self.engine.body_index_mp.get_mut(&body.class) {
+        match scene.body_index_mp.get_mut(&body.class) {
             Some(mp) => {
                 mp.insert(body.name, body_id);
             }
             None => {
                 let mut mp = HashMap::new();
                 mp.insert(body.name, body_id);
-                self.engine.body_index_mp.insert(body.class.clone(), mp);
+                scene.body_index_mp.insert(body.class.clone(), mp);
             }
         }
         for collider in body.collider.collider_v {
@@ -60,8 +60,8 @@ impl<'a, D, E> SceneHandle<'a, D, E> {
         let joint_id = self.engine.unique_id;
         self.engine.unique_id += 1;
         let scene = self.engine.scene_mp.get_mut(&self.scene_id).unwrap();
-        let body1 = &self.engine.body_mp[&joint.body1];
-        let body2 = &self.engine.body_mp[&joint.body2];
+        let body1 = &scene.body_mp[&joint.body1];
+        let body2 = &scene.body_mp[&joint.body2];
         joint.joint.user_data = joint_id as u128;
         scene
             .physics_engine
@@ -127,17 +127,20 @@ impl<'a, D, E> SceneHandle<'a, D, E> {
 
     /// Get body by id.
     pub fn get_body_mut(&mut self, id: &u64) -> Option<&mut Body> {
-        self.engine.body_mp.get_mut(id)
+        let scene = self.engine.scene_mp.get_mut(&self.scene_id).unwrap();
+        scene.body_mp.get_mut(id)
     }
 
     /// Get body by id.
     pub fn get_body(&self, id: &u64) -> Option<&Body> {
-        self.engine.body_mp.get(id)
+        let scene = self.engine.scene_mp.get(&self.scene_id).unwrap();
+        scene.body_mp.get(id)
     }
 
     /// Get body ids by class.
     pub fn get_body_id_v_by_class(&self, class: &str) -> Vec<u64> {
-        match self.engine.body_index_mp.get(class) {
+        let scene = self.engine.scene_mp.get(&self.scene_id).unwrap();
+        match scene.body_index_mp.get(class) {
             Some(mp) => mp.iter().map(|(_, v)| *v).collect(),
             None => Vec::new(),
         }
@@ -145,11 +148,8 @@ impl<'a, D, E> SceneHandle<'a, D, E> {
 
     /// Get body id by its class and name.
     pub fn get_body_id_by_class_name(&self, class: &str, name: &str) -> Option<u64> {
-        self.engine
-            .body_index_mp
-            .get(class)?
-            .get(name)
-            .map(|id| *id)
+        let scene = self.engine.scene_mp.get(&self.scene_id).unwrap();
+        scene.body_index_mp.get(class)?.get(name).map(|id| *id)
     }
 
     /// Get the collider by its handle
@@ -190,5 +190,15 @@ impl<'a, D, E> SceneHandle<'a, D, E> {
     pub fn get_rigid_body_mut(&mut self, h: RigidBodyHandle) -> Option<&mut RigidBody> {
         let scene = self.engine.scene_mp.get_mut(&self.scene_id).unwrap();
         scene.physics_engine.rigid_body_set.get_mut(h)
+    }
+
+    pub fn remove_body(&mut self, id: u64) {
+        let scene = self.engine.scene_mp.get_mut(&self.scene_id).unwrap();
+        if let Some(body) = scene.body_mp.remove(&id) {
+            if let Some(set) = scene.body_index_mp.get_mut(&body.class) {
+                set.remove(&body.name);
+                scene.physics_engine.remove_rigid_body(body.rigid);
+            }
+        }
     }
 }

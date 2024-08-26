@@ -21,7 +21,7 @@ mod inner {
 
     pub fn clean_dead<D, E>(engine: &mut Engine<D, E>) {
         let scene = engine.scene_mp.get_mut(&engine.cur_scene_id).unwrap();
-        let dead_id_v = engine
+        let dead_id_v = scene
             .body_mp
             .iter_mut()
             .map(|(id, body)| {
@@ -37,7 +37,7 @@ mod inner {
             .map(|op| op.unwrap())
             .collect::<Vec<u64>>();
         for id in &dead_id_v {
-            let body = engine.body_mp.remove(id).unwrap();
+            let body = scene.body_mp.remove(id).unwrap();
             scene.physics_engine.remove_rigid_body(body.rigid);
         }
     }
