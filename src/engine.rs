@@ -114,6 +114,7 @@ mod inner {
     }
 }
 
+pub mod builder;
 pub mod handle;
 
 #[derive(Clone)]
