@@ -17,7 +17,7 @@ pub fn step<D, E>(engine: &mut Engine<D, E>) {
 }
 
 mod inner {
-    use crate::engine::{handle::SceneHandle, Engine};
+    use crate::util::engine::{handle::SceneHandle, Engine};
 
     pub fn clean_dead<D, E>(engine: &mut Engine<D, E>) {
         let scene = engine.scene_mp.get_mut(&engine.cur_scene_id).unwrap();

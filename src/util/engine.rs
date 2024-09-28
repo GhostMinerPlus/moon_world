@@ -8,7 +8,7 @@ use wgpu::{Instance, Surface};
 
 use winit::{dpi::PhysicalSize, window::Window};
 
-use crate::{err, shape};
+use crate::{err, util::shape};
 
 mod drawer;
 mod physics;
