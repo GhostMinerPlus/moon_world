@@ -1,13 +1,9 @@
 use super::Engine;
 
-pub fn step<D, E>(engine: &mut Engine<D, E>) {
+pub fn step(engine: &mut Engine) {
     inner::clean_dead(engine);
 
-    engine
-        .scene_mp
-        .get_mut(&engine.cur_scene_id)
-        .unwrap()
-        .step();
+    engine.physics_manager.step();
 
     inner::pull_collision_event(engine);
     inner::pull_force_event(engine);
@@ -17,10 +13,10 @@ pub fn step<D, E>(engine: &mut Engine<D, E>) {
 }
 
 mod inner {
-    use crate::util::engine::{handle::SceneHandle, Engine};
+    use crate::util::engine::Engine;
 
-    pub fn clean_dead<D, E>(engine: &mut Engine<D, E>) {
-        let scene = engine.scene_mp.get_mut(&engine.cur_scene_id).unwrap();
+    pub fn clean_dead(engine: &mut Engine) {
+        let scene = &mut engine.physics_manager;
         let dead_id_v = scene
             .body_mp
             .iter_mut()
@@ -41,46 +37,43 @@ mod inner {
         }
     }
 
-    pub fn pull_collision_event<D, E>(engine: &mut Engine<D, E>) {
-        let scene_id = engine.cur_scene_id;
-        loop {
-            let scene = engine.scene_mp.get(&scene_id).unwrap();
-            let event_op = scene.collision_event_rx.try_recv();
-            if event_op.is_err() {
-                break;
-            }
-            if let Some(on_collision_event) = &scene.on_collision_event {
-                (*on_collision_event.clone())(SceneHandle { engine, scene_id }, event_op.unwrap());
-            }
-        }
+    pub fn pull_collision_event(engine: &mut Engine) {
+        // let scene = &mut engine.physics_manager;
+        // loop {
+        //     let event_op = scene.collision_event_rx.try_recv();
+        //     if event_op.is_err() {
+        //         break;
+        //     }
+        //     if let Some(on_collision_event) = &scene.on_collision_event {
+        //         (*on_collision_event.clone())(SceneHandle { engine, scene_id }, event_op.unwrap());
+        //     }
+        // }
     }
 
-    pub fn pull_force_event<D, E>(engine: &mut Engine<D, E>) {
-        let scene_id = engine.cur_scene_id;
-        loop {
-            let scene = engine.scene_mp.get(&scene_id).unwrap();
-            let event_op = scene.force_event_rx.try_recv();
-            if event_op.is_err() {
-                break;
-            }
-            if scene.on_force_event.is_none() {
-                continue;
-            }
-            let on_force_event_op = scene.on_force_event.clone();
-            (*on_force_event_op.as_ref().unwrap())(
-                SceneHandle { engine, scene_id },
-                event_op.unwrap(),
-            );
-        }
+    pub fn pull_force_event(engine: &mut Engine) {
+        // let scene = &mut engine.physics_manager;
+        // loop {
+        //     let event_op = scene.force_event_rx.try_recv();
+        //     if event_op.is_err() {
+        //         break;
+        //     }
+        //     if scene.on_force_event.is_none() {
+        //         continue;
+        //     }
+        //     let on_force_event_op = scene.on_force_event.clone();
+        //     (*on_force_event_op.as_ref().unwrap())(
+        //         SceneHandle { engine, scene_id },
+        //         event_op.unwrap(),
+        //     );
+        // }
     }
 
-    pub fn on_step<D, E>(engine: &mut Engine<D, E>) {
-        let scene_id = engine.cur_scene_id;
-        let time_stamp = engine.time_stamp;
-        let scene = engine.scene_mp.get(&scene_id).unwrap();
-        if scene.on_step.is_some() {
-            let listener = scene.on_step.as_ref().unwrap().clone();
-            (*listener)(SceneHandle { engine, scene_id }, time_stamp);
-        }
+    pub fn on_step(engine: &mut Engine) {
+        // let time_stamp = engine.time_stamp;
+        // let scene = &mut engine.physics_manager;
+        // if scene.on_step.is_some() {
+        //     let listener = scene.on_step.as_ref().unwrap().clone();
+        //     (*listener)(SceneHandle { engine, scene_id }, time_stamp);
+        // }
     }
 }

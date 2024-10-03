@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use edge_lib::engine::EdgeEngine;
+use edge_lib::util::engine::EdgeEngine;
 use sqlite_dm::SqliteDataManager;
 use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
 
