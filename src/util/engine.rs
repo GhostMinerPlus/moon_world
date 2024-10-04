@@ -344,9 +344,9 @@ impl Engine {
             vision_manager,
         };
 
-        this.new_vnode();
+        let root_id = this.new_vnode();
         this.apply_props(
-            0,
+            root_id,
             &ViewProps {
                 class: format!("Main"),
                 props: json::Null,
@@ -393,16 +393,19 @@ impl Engine {
         self.vision_manager
             .ray_drawer
             .update_watcher(&self.vision_manager.device, &self.physics_manager.watcher);
+
         // Update line
         let line_v = inner::gen_line_v(self);
-        self.vision_manager
-            .ray_drawer
-            .update_line_v(&self.vision_manager.device, &line_v);
+        if !line_v.is_empty() {
+            self.vision_manager
+                .ray_drawer
+                .update_line_v(&self.vision_manager.device, &line_v);
 
-        // Draw ray tracing result to texture
-        self.vision_manager
-            .ray_drawer
-            .draw_ray_to_point_texture(&self.vision_manager.device, &self.vision_manager.queue);
+            // Draw ray tracing result to texture
+            self.vision_manager
+                .ray_drawer
+                .draw_ray_to_point_texture(&self.vision_manager.device, &self.vision_manager.queue);
+        }
 
         // Draw to surface
         let output = self
@@ -535,7 +538,19 @@ impl AsViewManager for Engine {
     fn on_update_vnode_props(&mut self, id: u64, props: &ViewProps) {
         let vnode = self.get_vnode(&id).unwrap();
 
-        if vnode.view_props.class != props.class {
+        let mut need_update_watcher = false;
+        if let Some(is_watcher) = props.props["$:watcher"][0].as_str() {
+            if is_watcher == "true" {
+                need_update_watcher = true;
+            }
+        }
+
+        let body_id_op = if vnode.view_props.class != props.class {
+            log::debug!(
+                "change {} to {} at vnode:{id}",
+                vnode.view_props.class,
+                props.class
+            );
             // delete body
             match vnode.view_props.class.as_str() {
                 "ball" => {
@@ -549,48 +564,42 @@ impl AsViewManager for Engine {
                 _ => (),
             }
 
-            let mut need_update_watcher = false;
-            if let Some(is_watcher) = props.props["$:watcher"][0].as_str() {
-                if is_watcher == "true" {
-                    need_update_watcher = true;
-                }
-            }
-
             // insert body
-            let body_id = match props.class.as_str() {
-                "ball" => self.add_body(BodyBuilder::new(
-                    "ball".to_string(),
-                    format!("{id}"),
-                    BodyLook {
-                        ray_look: vec![RayLook {
-                            shape: Shape::circle(),
-                            shape_matrix: Matrix3::new_scaling(0.05),
-                            color: Vector3::new(1.0, 1.0, 1.0),
-                            light: 0.0,
-                            roughness: 0.0,
-                            seed: 12.4,
-                            is_visible: true,
-                        }],
-                        light_look: vec![LightLook {
-                            shape: Shape::circle(),
-                            shape_matrix: Matrix3::new_scaling(0.05),
-                            color: Vector3::new(1.0, 1.0, 1.0),
-                            is_visible: true,
-                        }],
-                    },
-                    BodyCollider {
-                        collider_v: vec![ColliderBuilder::ball(0.05).mass(0.001).build()],
-                    },
-                    RigidBodyBuilder::dynamic()
-                        .ccd_enabled(true)
-                        .translation(vector![-0.35, 0.2])
-                        .build(),
-                    None,
-                )),
-                _ => 0,
-            };
+            match props.class.as_str() {
+                "ball" => {
+                    let body_id = self.add_body(BodyBuilder::new(
+                        "ball".to_string(),
+                        format!("{id}"),
+                        BodyLook {
+                            ray_look: vec![],
+                            light_look: vec![LightLook {
+                                shape: Shape::circle(),
+                                shape_matrix: Matrix3::new_scaling(0.05),
+                                color: Vector3::new(1.0, 0.0, 1.0),
+                                is_visible: true,
+                            }],
+                        },
+                        BodyCollider {
+                            collider_v: vec![ColliderBuilder::ball(0.05).mass(0.001).build()],
+                        },
+                        RigidBodyBuilder::dynamic()
+                            .ccd_enabled(true)
+                            .translation(vector![0.0, 0.2])
+                            .build(),
+                        None,
+                    ));
+                    Some(body_id)
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
 
+        if let Some(body_id) = body_id_op {
+            log::debug!("add body {body_id} to {id} {}", props.class);
             if need_update_watcher {
+                log::debug!("set {body_id} as watcher");
                 self.watcher_binding_body_id = body_id;
             }
         }
