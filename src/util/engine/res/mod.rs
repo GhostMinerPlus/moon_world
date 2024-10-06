@@ -1,10 +1,10 @@
 use std::{
     collections::HashMap,
-    sync::mpsc::{channel, Receiver},
+    sync::mpsc::channel,
 };
 
-use rapier2d::prelude::{CollisionEvent, ContactForceEvent, IntegrationParameters};
-use rodio::{cpal::FromSample, OutputStream, OutputStreamHandle, Sample, Sink, Source};
+use rapier2d::prelude::IntegrationParameters;
+use rodio::{cpal::FromSample, OutputStream, Sample, Sink, Source};
 
 use super::{drawer, physics, structs, Body};
 

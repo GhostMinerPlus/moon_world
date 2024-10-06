@@ -1,5 +1,7 @@
 use std::{
-    collections::HashMap, sync::mpsc::{channel, Sender}, thread
+    collections::HashMap,
+    sync::mpsc::{channel, Sender},
+    thread,
 };
 
 use winit::{

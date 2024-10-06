@@ -502,6 +502,27 @@ impl AsEdgeEngine for Engine {
     fn reset(&mut self) {
         self.data_manager.temp = Arc::new(MemDataManager::new(None));
     }
+
+    fn call<'a, 'a1, 'a2, 'a3, 'a4, 'f>(
+        &'a mut self,
+        output: &'a1 edge_lib::util::Path,
+        func: &'a2 str,
+        input: &'a3 edge_lib::util::Path,
+        input1: &'a4 edge_lib::util::Path,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<()>> + Send + 'f>>
+    where
+        'a: 'f,
+        'a1: 'f,
+        'a2: 'f,
+        'a3: 'f,
+        'a4: 'f,
+    {
+        Box::pin(async move {
+            match func {
+                _ => self.get_dm().call(output, func, input, input1).await,
+            }
+        })
+    }
 }
 
 impl AsViewManager for Engine {
@@ -546,6 +567,7 @@ impl AsViewManager for Engine {
         }
 
         let body_id_op = if vnode.view_props.class != props.class {
+            // then replace
             log::debug!(
                 "change {} to {} at vnode:{id}",
                 vnode.view_props.class,
@@ -582,9 +604,9 @@ impl AsViewManager for Engine {
                         BodyCollider {
                             collider_v: vec![ColliderBuilder::ball(0.05).mass(0.001).build()],
                         },
-                        RigidBodyBuilder::dynamic()
+                        RigidBodyBuilder::fixed()
                             .ccd_enabled(true)
-                            .translation(vector![0.0, 0.2])
+                            .translation(vector![0.0, 0.0])
                             .build(),
                         None,
                     ));
@@ -593,7 +615,16 @@ impl AsViewManager for Engine {
                 _ => None,
             }
         } else {
-            None
+            match props.class.as_str() {
+                "ball" => {
+                    let body_id = self
+                        .physics_manager
+                        .get_body_id_by_class_name("ball", &format!("{id}"))
+                        .unwrap();
+                    Some(body_id)
+                }
+                _ => None,
+            }
         };
 
         if let Some(body_id) = body_id_op {
