@@ -1,3 +1,5 @@
+//! Help the crate be a world2 error provider.
+
 use std::fmt::Display;
 
 #[derive(Debug)]

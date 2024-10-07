@@ -48,18 +48,24 @@ impl ApplicationHandler for Application {
         view_class.insert(
             "Main".to_string(),
             vec![
-                format!("$->$:onclick = '$->$:output\\s+\\s1\\s1','$->$:output\\s+\\s$->$:output\\s1' _"),
+                format!("$->$:state->$:pos if $->$:state->$:pos $->$:props->$:pos"),
+                //
                 format!("$->$:root = ? _"),
-                format!("$->$:ball = ? _"),
+                format!("$->$:phy_ball = ? _"),
+                format!("$->$:vi_ball = ? _"),
                 //
-                format!("$->$:ball->$:class = ball _"),
-                format!("$->$:ball->$:props = ? _"),
+                format!("$->$:phy_ball->$:class = Physics:ball _"),
+                format!("$->$:phy_ball->$:props = ? _"),
+                format!("$->$:vi_ball->$:class = Vision:ball _"),
+                format!("$->$:vi_ball->$:props = ? _"),
                 format!("$->$:root->$:class = div _"),
-                format!("$->$:root->$:child = $->$:ball _"),
-                format!("$->$:root->$:props = ? _"),
+                format!("$->$:root->$:child = $->$:phy_ball _"),
+                format!("$->$:root->$:child += $->$:root->$:child $->$:vi_ball"),
                 //
-                format!("$->$:ball->$:props->$:watcher = true _"),
-                format!("$->$:root->$:props->$:onclick = $->$:onclick _"),
+                format!("$->$:phy_ball->$:props->$:onstep = '$->$:state->$:pos\\s$world2_get_pos\\s$->$:vnode_id\\s_' _"),
+                format!("$->$:phy_ball->$:props->$:watcher = true _"),
+                format!("$->$:phy_ball->$:props->$:pos = $->$:state->$:pos _"),
+                format!("$->$:vi_ball->$:props->$:pos = $->$:state->$:pos _"),
                 //
                 format!("$->$:output dump $->$:root $"),
             ],
@@ -84,8 +90,11 @@ impl ApplicationHandler for Application {
                             log::error!("{e}\nat event_handler");
                         }
                     }
-                    if let Err(e) = engine.step() {
+                    if let Err(e) = engine.step().await {
                         log::error!("{e}\nat step");
+                    }
+                    if let Err(e) = engine.render() {
+                        log::error!("{e}\nat render");
                     }
                 }
             });

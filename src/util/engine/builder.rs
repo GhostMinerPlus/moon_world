@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use edge_lib::util::engine::EdgeEngine;
 use sqlite_dm::SqliteDataManager;
 use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
 
@@ -20,7 +19,6 @@ impl SceneBuilder {
             .await
             .unwrap();
         let dm = Arc::new(SqliteDataManager::new(pool, None));
-        let mut engine = EdgeEngine::new(dm, "root").await;
 
         todo!()
     }

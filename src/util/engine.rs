@@ -1,126 +1,25 @@
-use edge_lib::util::{
-    data::{AsDataManager, MemDataManager, TempDataManager},
-    engine::AsEdgeEngine,
-};
-use nalgebra::{vector, Matrix3, Vector2, Vector3};
-use rapier2d::prelude::{
-    Collider, ColliderBuilder, GenericJoint, IntegrationParameters, RigidBody, RigidBodyBuilder,
-    RigidBodyHandle,
-};
-use view_manager::{AsViewManager, VNode, ViewProps};
+//! Help the crate be a video provider or a event handler.
+//! - video provider > frame provider + step
 
-use std::{collections::HashMap, sync::Arc};
+use edge_lib::util::data::{AsDataManager, AsStack, MemDataManager, TempDataManager};
+use nalgebra::{Matrix3, Vector2, Vector3};
+use rapier2d::prelude::{
+    Collider, GenericJoint, IntegrationParameters, RigidBody, RigidBodyHandle,
+};
+use structs::Watcher;
+use view_manager::util::{AsViewManager, VNode, ViewProps};
+
+use std::{collections::HashMap, io};
 use wgpu::{Instance, Surface};
 
 use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{err, util::shape};
 
-use super::shape::Shape;
-
 mod drawer;
 mod physics;
 mod res;
-mod step;
 mod structs;
-mod inner {
-    use nalgebra::{Matrix3, Point2, Vector2};
-
-    use super::{
-        structs::{Line, LineIn},
-        Engine,
-    };
-
-    pub fn gen_light_line_v(engine: &Engine) -> Vec<LineIn> {
-        let mut line_v = Vec::new();
-        let physics_manager = &engine.physics_manager;
-        for (_, rigid_body) in physics_manager.physics_engine.rigid_body_set.iter() {
-            let body_id = rigid_body.user_data as u64;
-            for body_look in &physics_manager.body_mp[&body_id].look.light_look {
-                if !body_look.is_visible {
-                    continue;
-                }
-                let body_matrix = {
-                    let position = rigid_body.translation();
-                    let angle = rigid_body.rotation().angle();
-                    let body_matrix =
-                        Matrix3::new_translation(&Vector2::new(position.x, position.y))
-                            * Matrix3::new_rotation(angle);
-                    body_matrix
-                };
-                let matrix = body_matrix * body_look.shape_matrix;
-                let point_v = body_look
-                    .shape
-                    .point_v
-                    .iter()
-                    .map(|point| matrix.transform_point(point))
-                    .collect::<Vec<Point2<f32>>>();
-                if point_v.is_empty() {
-                    return line_v;
-                }
-                for i in 0..point_v.len() - 1 {
-                    let sp = point_v[i];
-                    let ep = point_v[i + 1];
-                    line_v.push(LineIn {
-                        position: [sp.x, sp.y],
-                        color: body_look.color.into(),
-                    });
-                    line_v.push(LineIn {
-                        position: [ep.x, ep.y],
-                        color: body_look.color.into(),
-                    });
-                }
-            }
-        }
-
-        line_v
-    }
-
-    pub fn gen_line_v(engine: &Engine) -> Vec<Line> {
-        let scene = &engine.physics_manager;
-        let mut line_v = Vec::new();
-        for (_, rigid_body) in scene.physics_engine.rigid_body_set.iter() {
-            let body_id = rigid_body.user_data as u64;
-            for body_look in &scene.body_mp[&body_id].look.ray_look {
-                if !body_look.is_visible {
-                    continue;
-                }
-                let body_matrix = {
-                    let position = rigid_body.translation();
-                    let angle = rigid_body.rotation().angle();
-                    let body_matrix =
-                        Matrix3::new_translation(&Vector2::new(position.x, position.y))
-                            * Matrix3::new_rotation(angle);
-                    body_matrix
-                };
-                let matrix = body_matrix * body_look.shape_matrix;
-                let point_v = body_look
-                    .shape
-                    .point_v
-                    .iter()
-                    .map(|point| matrix.transform_point(point))
-                    .collect::<Vec<Point2<f32>>>();
-                if point_v.is_empty() {
-                    continue;
-                }
-                for i in 0..point_v.len() - 1 {
-                    let sp = point_v[i];
-                    let ep = point_v[i + 1];
-                    line_v.push(Line {
-                        sp: sp.into(),
-                        ep: ep.into(),
-                        light: body_look.light,
-                        color: body_look.color.into(),
-                        roughness: body_look.roughness,
-                        seed: body_look.seed + i as f32,
-                        ..Default::default()
-                    });
-                }
-            }
-        }
-        line_v
-    }
-}
 
 pub mod builder;
 pub mod handle;
@@ -187,10 +86,9 @@ impl BodyBuilder {
 
 pub struct Body {
     pub class: String,
-    pub name: String,
     pub look: BodyLook,
-    pub rigid: RigidBodyHandle,
     pub life_step_op: Option<u64>,
+    pub matrix: Matrix3<f32>,
 }
 
 pub struct Joint {
@@ -293,7 +191,7 @@ impl EngineBuilder {
         let ray_drawer = drawer::RayDrawer::new(&device, self.size);
 
         Ok(Engine::new(
-            Arc::new(MemDataManager::new(None)),
+            Box::new(MemDataManager::new(None)),
             self.view_class,
             res::AudioManager::new(),
             res::PhysicsManager::new(IntegrationParameters::default()),
@@ -311,12 +209,23 @@ impl EngineBuilder {
     }
 }
 
+pub enum AtomElement {
+    Data(String),
+    Audio(()),
+    Physics(RigidBodyHandle),
+    Vision(u64),
+}
+
+/// A frame provider and a event handler.
 pub struct Engine {
     unique_id: u64,
     time_stamp: u128,
-    watcher_binding_body_id: u64,
     vnode_mp: HashMap<u64, VNode>,
     view_class: HashMap<String, Vec<String>>,
+    watcher_binding_body_id: u64,
+    element_mp: HashMap<u64, AtomElement>,
+    element_index_mp: HashMap<String, HashMap<String, u64>>,
+    watcher: Watcher,
 
     data_manager: TempDataManager,
     audio_manager: res::AudioManager,
@@ -325,8 +234,9 @@ pub struct Engine {
 }
 
 impl Engine {
+    /// [Engine] constructor.
     pub async fn new(
-        dm: Arc<dyn AsDataManager>,
+        dm: Box<dyn AsDataManager>,
         view_class: HashMap<String, Vec<String>>,
         audio_manager: res::AudioManager,
         physics_manager: res::PhysicsManager,
@@ -335,23 +245,30 @@ impl Engine {
         let mut this = Self {
             unique_id: 0,
             time_stamp: 0,
-            watcher_binding_body_id: 0,
             vnode_mp: HashMap::new(),
             view_class,
+            watcher_binding_body_id: 0,
+            element_mp: HashMap::new(),
+            element_index_mp: HashMap::new(),
+            watcher: Watcher {
+                position: [0.0, 0.0],
+                offset: [0.0, 0.0],
+            },
             data_manager: TempDataManager::new(dm),
             audio_manager,
             physics_manager,
             vision_manager,
         };
 
-        let root_id = this.new_vnode();
+        let root_id = this.new_vnode(0);
         this.apply_props(
             root_id,
             &ViewProps {
                 class: format!("Main"),
                 props: json::Null,
-                child_v: vec![],
             },
+            0,
+            true,
         )
         .await
         .unwrap();
@@ -359,6 +276,7 @@ impl Engine {
         this
     }
 
+    /// Event handler, let event be handled.
     pub async fn event_handler(
         &mut self,
         entry_name: &str,
@@ -376,68 +294,41 @@ impl Engine {
         }
     }
 
-    /// Step and render
-    pub fn step(&mut self) -> err::Result<()> {
-        step::step(self);
+    /// Let the engine be stepped.
+    pub async fn step(&mut self) -> err::Result<()> {
+        self.physics_manager.step();
 
-        // Update Watcher
-        let watcher_body = self
-            .physics_manager
-            .body_mp
-            .get(&self.watcher_binding_body_id)
-            .ok_or(err::Error::Other(format!("no wather!")))?;
-        let rigid_body = &self.physics_manager.physics_engine.rigid_body_set[watcher_body.rigid];
-        let pos = rigid_body.translation();
-        self.physics_manager.watcher.position[0] = pos.x;
-        self.physics_manager.watcher.position[1] = pos.y;
-        self.vision_manager
-            .ray_drawer
-            .update_watcher(&self.vision_manager.device, &self.physics_manager.watcher);
-
-        // Update line
-        let line_v = inner::gen_line_v(self);
-        if !line_v.is_empty() {
-            self.vision_manager
-                .ray_drawer
-                .update_line_v(&self.vision_manager.device, &line_v);
-
-            // Draw ray tracing result to texture
-            self.vision_manager
-                .ray_drawer
-                .draw_ray_to_point_texture(&self.vision_manager.device, &self.vision_manager.queue);
-        }
-
-        // Draw to surface
-        let output = self
-            .vision_manager
-            .surface
-            .get_current_texture()
-            .map_err(err::map_append("\nat get_current_texture"))?;
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
+        for id in self
+            .element_mp
+            .iter()
+            .filter(|(_, ele)| {
+                if let AtomElement::Physics(_) = ele {
+                    return true;
+                }
+                false
+            })
+            .map(|(id, _)| *id)
+            .collect::<Vec<u64>>()
         {
-            // Draw point to surface
-            self.vision_manager.surface_drawer.draw_point_to_surface(
-                &self.vision_manager.device,
-                &self.vision_manager.queue,
-                &view,
-                self.vision_manager.ray_drawer.get_result_buffer(),
-                self.vision_manager.ray_drawer.get_size_buffer(),
-            )?;
-            // Draw watcher to surface
-            self.vision_manager.light_drawer.draw_light_to_surface(
-                &self.vision_manager.device,
-                &self.vision_manager.queue,
-                &view,
-                self.vision_manager.ray_drawer.get_watcher_buffer(),
-                self.vision_manager.ray_drawer.get_size_buffer(),
-                &inner::gen_light_line_v(self),
-            )?;
+            let _ = self.event_entry(id, "$:onstep", json::Null).await;
         }
-        output.present();
-
         Ok(())
+    }
+
+    /// Let the engine be rendered.
+    pub fn render(&mut self) -> err::Result<()> {
+        if let Some(ele) = self.element_mp.get(&self.watcher_binding_body_id) {
+            if let AtomElement::Physics(h) = ele {
+                if let Some(body) = self.physics_manager.physics_engine.rigid_body_set.get(*h) {
+                    let pos = body.translation();
+
+                    self.watcher.position = [pos.x, pos.y];
+                }
+            }
+        }
+
+        // Let the surface be drew.
+        self.vision_manager.render(&self.watcher)
     }
 
     pub fn move_watcher(&mut self, offset: Vector2<f32>) {
@@ -448,61 +339,70 @@ impl Engine {
             .update_watcher(&self.vision_manager.device, &self.physics_manager.watcher);
     }
 
-    //// Add a body into this scene.
-    pub fn add_body(&mut self, mut body: BodyBuilder) -> u64 {
-        let body_id = self.unique_id;
-        self.unique_id += 1;
-        let scene = &mut self.physics_manager;
-        body.rigid.user_data = body_id as u128;
-        let body_handle = scene.physics_engine.rigid_body_set.insert(body.rigid);
-        scene.body_mp.insert(
-            body_id,
-            Body {
-                class: body.class.clone(),
-                name: body.name.clone(),
-                look: body.look,
-                rigid: body_handle,
-                life_step_op: body.life_step_op,
-            },
-        );
-        match scene.body_index_mp.get_mut(&body.class) {
-            Some(mp) => {
-                mp.insert(body.name, body_id);
+    /// Element generator, let the variable be id of the new element which consists of physics, vision and audio.
+    pub fn create_element(&mut self, id: u64, class: &str) {
+        let atom_element = if class.starts_with("Physics:") {
+            match class {
+                "Physics:ball" => {
+                    AtomElement::Physics(self.physics_manager.create_element("ball").unwrap())
+                }
+                _ => {
+                    return;
+                }
             }
-            None => {
-                let mut mp = HashMap::new();
-                mp.insert(body.name, body_id);
-                scene.body_index_mp.insert(body.class.clone(), mp);
+        } else if class.starts_with("Vision:") {
+            match class {
+                "Vision:ball" => {
+                    AtomElement::Vision(self.vision_manager.create_element("ball").unwrap())
+                }
+                _ => {
+                    return;
+                }
             }
-        }
-        for collider in body.collider.collider_v {
-            scene.physics_engine.collider_set.insert_with_parent(
-                collider,
-                body_handle,
-                &mut scene.physics_engine.rigid_body_set,
-            );
-        }
-        body_id
+        } else {
+            return;
+        };
+        self.element_mp.insert(id, atom_element);
     }
 
-    pub fn remove_body(&mut self, id: &u64) {
-        self.physics_manager.remove_body(id)
+    /// Let the element specified by the id be deleted.
+    pub fn delete_element(&mut self, id: u64) {
+        if let Some(atom_ele) = self.element_mp.remove(&id) {
+            match atom_ele {
+                AtomElement::Data(_) => todo!(),
+                AtomElement::Audio(_) => todo!(),
+                AtomElement::Physics(rigid_body_handle) => {
+                    self.physics_manager.delete_element(rigid_body_handle)
+                }
+                AtomElement::Vision(id) => self.vision_manager.delete_element(id),
+            }
+        }
+    }
+
+    /// Let the element specified by the id be updated by this props.
+    pub fn update_element(&mut self, id: u64, props: &ViewProps) {
+        if let Some(atom_ele) = self.element_mp.get_mut(&id) {
+            match atom_ele {
+                AtomElement::Data(_) => todo!(),
+                AtomElement::Audio(_) => todo!(),
+                AtomElement::Physics(rigid_body_handle) => {
+                    self.physics_manager
+                        .update_element(*rigid_body_handle, props);
+                    if let Some(watcher) = props.props["$:watcher"][0].as_str() {
+                        if watcher == "true" {
+                            self.watcher_binding_body_id = id;
+                        }
+                    }
+                }
+                AtomElement::Vision(id) => {
+                    self.vision_manager.update_element(*id, props);
+                }
+            }
+        }
     }
 }
 
-impl AsEdgeEngine for Engine {
-    fn get_dm(&self) -> &TempDataManager {
-        &self.data_manager
-    }
-
-    fn get_dm_mut(&mut self) -> &mut TempDataManager {
-        &mut self.data_manager
-    }
-
-    fn reset(&mut self) {
-        self.data_manager.temp = Arc::new(MemDataManager::new(None));
-    }
-
+impl AsDataManager for Engine {
     fn call<'a, 'a1, 'a2, 'a3, 'a4, 'f>(
         &'a mut self,
         output: &'a1 edge_lib::util::Path,
@@ -519,9 +419,103 @@ impl AsEdgeEngine for Engine {
     {
         Box::pin(async move {
             match func {
-                _ => self.get_dm().call(output, func, input, input1).await,
+                "$world2_get_pos" => {
+                    let vnode_id = self
+                        .get(&input)
+                        .await?
+                        .first()
+                        .unwrap()
+                        .parse::<u64>()
+                        .unwrap();
+                    let ele = self.element_mp.get(&vnode_id).unwrap();
+                    if let AtomElement::Physics(h) = ele {
+                        let pos = self
+                            .physics_manager
+                            .physics_engine
+                            .rigid_body_set
+                            .get(*h)
+                            .unwrap()
+                            .translation();
+
+                        self.set(output, vec![pos.x.to_string(), pos.y.to_string()])
+                            .await
+                    } else {
+                        Err(io::Error::other(format!("no an AtomElement::Physics")))
+                    }
+                }
+                _ => self.data_manager.call(output, func, input, input1).await,
             }
         })
+    }
+
+    fn get_auth(&self) -> &edge_lib::util::data::Auth {
+        self.data_manager.get_auth()
+    }
+
+    fn append<'a, 'a1, 'f>(
+        &'a mut self,
+        path: &'a1 edge_lib::util::Path,
+        item_v: Vec<String>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<()>> + Send + 'f>>
+    where
+        'a: 'f,
+        'a1: 'f,
+    {
+        self.data_manager.append(path, item_v)
+    }
+
+    fn set<'a, 'a1, 'f>(
+        &'a mut self,
+        path: &'a1 edge_lib::util::Path,
+        item_v: Vec<String>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<()>> + Send + 'f>>
+    where
+        'a: 'f,
+        'a1: 'f,
+    {
+        self.data_manager.set(path, item_v)
+    }
+
+    fn get<'a, 'a1, 'f>(
+        &'a self,
+        path: &'a1 edge_lib::util::Path,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = std::io::Result<Vec<String>>> + Send + 'f>,
+    >
+    where
+        'a: 'f,
+        'a1: 'f,
+    {
+        self.data_manager.get(path)
+    }
+
+    fn get_code_v<'a, 'a1, 'a2, 'f>(
+        &'a self,
+        root: &'a1 str,
+        space: &'a2 str,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = std::io::Result<Vec<String>>> + Send + 'f>,
+    >
+    where
+        'a: 'f,
+        'a1: 'f,
+        'a2: 'f,
+    {
+        self.data_manager.get_code_v(root, space)
+    }
+}
+
+impl AsStack for Engine {
+    fn push<'a, 'f>(
+        &'a mut self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<()>> + Send + 'f>> {
+        self.data_manager.push()
+    }
+
+    fn pop<'a, 'f>(
+        &'a mut self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<()>> + Send + 'f>> {
+        self.data_manager.pop()
     }
 }
 
@@ -530,109 +524,34 @@ impl AsViewManager for Engine {
         self.view_class.get(class)
     }
 
-    fn get_vnode(&self, id: &u64) -> Option<&view_manager::VNode> {
+    fn get_vnode(&self, id: &u64) -> Option<&VNode> {
         self.vnode_mp.get(id)
     }
 
-    fn get_vnode_mut(&mut self, id: &u64) -> Option<&mut view_manager::VNode> {
+    fn get_vnode_mut(&mut self, id: &u64) -> Option<&mut VNode> {
         self.vnode_mp.get_mut(id)
     }
 
-    fn new_vnode(&mut self) -> u64 {
+    fn new_vnode(&mut self, context: u64) -> u64 {
         let new_id = self.unique_id;
         self.unique_id += 1;
-        self.vnode_mp.insert(
-            new_id,
-            VNode::new(ViewProps {
-                class: format!(""),
-                props: json::Null,
-                child_v: vec![],
-            }),
-        );
+        self.vnode_mp.insert(new_id, VNode::new(context));
         new_id
     }
 
-    fn rm_vnode(&mut self, id: u64) -> Option<view_manager::VNode> {
+    fn rm_vnode(&mut self, id: u64) -> Option<VNode> {
         self.vnode_mp.remove(&id)
     }
 
     fn on_update_vnode_props(&mut self, id: u64, props: &ViewProps) {
-        let vnode = self.get_vnode(&id).unwrap();
+        // Let the element be usable.
+        if self.get_vnode(&id).unwrap().view_props.class != props.class {
+            self.delete_element(id);
 
-        let mut need_update_watcher = false;
-        if let Some(is_watcher) = props.props["$:watcher"][0].as_str() {
-            if is_watcher == "true" {
-                need_update_watcher = true;
-            }
+            self.create_element(id, &props.class);
         }
 
-        let body_id_op = if vnode.view_props.class != props.class {
-            // then replace
-            log::debug!(
-                "change {} to {} at vnode:{id}",
-                vnode.view_props.class,
-                props.class
-            );
-            // delete body
-            match vnode.view_props.class.as_str() {
-                "ball" => {
-                    if let Some(body_id) = self
-                        .physics_manager
-                        .get_body_id_by_class_name("ball", &format!("{id}"))
-                    {
-                        self.remove_body(&body_id);
-                    }
-                }
-                _ => (),
-            }
-
-            // insert body
-            match props.class.as_str() {
-                "ball" => {
-                    let body_id = self.add_body(BodyBuilder::new(
-                        "ball".to_string(),
-                        format!("{id}"),
-                        BodyLook {
-                            ray_look: vec![],
-                            light_look: vec![LightLook {
-                                shape: Shape::circle(),
-                                shape_matrix: Matrix3::new_scaling(0.05),
-                                color: Vector3::new(1.0, 0.0, 1.0),
-                                is_visible: true,
-                            }],
-                        },
-                        BodyCollider {
-                            collider_v: vec![ColliderBuilder::ball(0.05).mass(0.001).build()],
-                        },
-                        RigidBodyBuilder::fixed()
-                            .ccd_enabled(true)
-                            .translation(vector![0.0, 0.0])
-                            .build(),
-                        None,
-                    ));
-                    Some(body_id)
-                }
-                _ => None,
-            }
-        } else {
-            match props.class.as_str() {
-                "ball" => {
-                    let body_id = self
-                        .physics_manager
-                        .get_body_id_by_class_name("ball", &format!("{id}"))
-                        .unwrap();
-                    Some(body_id)
-                }
-                _ => None,
-            }
-        };
-
-        if let Some(body_id) = body_id_op {
-            log::debug!("add body {body_id} to {id} {}", props.class);
-            if need_update_watcher {
-                log::debug!("set {body_id} as watcher");
-                self.watcher_binding_body_id = body_id;
-            }
-        }
+        // Let the element be updated.
+        self.update_element(id, props);
     }
 }
