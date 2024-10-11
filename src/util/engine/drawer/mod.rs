@@ -199,7 +199,7 @@ impl RayDrawer {
 
     pub fn update_watcher(&mut self, device: &Device, watcher: &Watcher) {
         self.watcher_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("LineV Buffer"),
+            label: Some("Watcher Buffer"),
             contents: &bytemuck::cast_slice(&[*watcher]),
             usage: wgpu::BufferUsages::UNIFORM,
         });
