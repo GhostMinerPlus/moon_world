@@ -1,7 +1,5 @@
-pub mod engine;
-pub mod err;
-pub mod shape;
+//! Help the crate be a 2d game.
 
-pub use rapier2d;
-pub use winit;
-pub use rodio;
+pub mod err;
+pub mod util;
+pub mod dep;
