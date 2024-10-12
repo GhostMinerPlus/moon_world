@@ -6,6 +6,7 @@ use rapier2d::prelude::{
 };
 use rodio::{cpal::FromSample, OutputStream, Sample, Sink, Source};
 use view_manager::util::ViewProps;
+use wgpu::{SurfaceTexture, TextureView};
 
 use crate::{err, util::shape::Shape};
 
@@ -89,9 +90,10 @@ mod inner {
         body_handle
     }
 
-    pub fn gen_light_line_v(vision_manager: &VisionManager) -> Vec<LineIn> {
+    pub fn gen_light_line_v(vision_manager: &VisionManager, id_v: &[u64]) -> Vec<LineIn> {
         let mut line_v: Vec<LineIn> = Vec::new();
-        for (_, body) in &vision_manager.body_mp {
+        for id in id_v {
+            let body = &vision_manager.body_mp[id];
             for light_look in &body.look.light_look {
                 if !light_look.is_visible {
                     continue;
@@ -124,9 +126,10 @@ mod inner {
         line_v
     }
 
-    pub fn gen_line_v(vision_manager: &VisionManager) -> Vec<Line> {
+    pub fn gen_line_v(vision_manager: &VisionManager, id_v: &[u64]) -> Vec<Line> {
         let mut line_v = Vec::new();
-        for (_, body) in &vision_manager.body_mp {
+        for id in id_v {
+            let body = &vision_manager.body_mp[id];
             for ray_look in &body.look.ray_look {
                 if !ray_look.is_visible {
                     continue;
@@ -228,6 +231,75 @@ impl PhysicsManager {
     }
 }
 
+pub struct RenderPass<'a> {
+    vm: &'a mut VisionManager,
+    output: SurfaceTexture,
+    view: TextureView,
+    id_v: Vec<u64>,
+}
+
+impl<'a> RenderPass<'a> {
+    pub fn new(vm: &'a mut VisionManager, watcher: &Watcher) -> Self {
+        vm.ray_drawer.update_watcher(&vm.device, watcher);
+        // Let the surface be drew.
+        let output = vm.surface.get_current_texture().unwrap();
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let id_v = Vec::new();
+
+        Self {
+            vm,
+            output,
+            view,
+            id_v,
+        }
+    }
+
+    pub fn render_element(&mut self, id: u64) {
+        self.id_v.push(id);
+    }
+
+    pub fn end(self) {
+        let line_v = inner::gen_line_v(self.vm, &self.id_v);
+        if !line_v.is_empty() {
+            self.vm.ray_drawer.update_line_v(&self.vm.device, &line_v);
+
+            // Draw ray tracing result to texture
+            self.vm
+                .ray_drawer
+                .draw_ray_to_point_texture(&self.vm.device, &self.vm.queue);
+        }
+
+        // Let the points be drew to current surface.
+        self.vm
+            .surface_drawer
+            .draw_point_to_surface(
+                &self.vm.device,
+                &self.vm.queue,
+                &self.view,
+                self.vm.ray_drawer.get_result_buffer(),
+                self.vm.ray_drawer.get_size_buffer(),
+            )
+            .unwrap();
+
+        // Let the watcher be drew to current surface.
+        self.vm
+            .light_drawer
+            .draw_light_to_surface(
+                &self.vm.device,
+                &self.vm.queue,
+                &self.view,
+                self.vm.ray_drawer.get_watcher_buffer(),
+                self.vm.ray_drawer.get_size_buffer(),
+                &inner::gen_light_line_v(self.vm, &self.id_v),
+            )
+            .unwrap();
+
+        self.output.present();
+    }
+}
+
 pub struct VisionManager {
     pub ray_drawer: drawer::RayDrawer,
     pub light_drawer: drawer::WathcerDrawer,
@@ -274,51 +346,6 @@ impl VisionManager {
             self.surface.configure(&self.device, &self.config);
             self.ray_drawer.resize(&self.device, &self.queue, new_size);
         }
-    }
-
-    pub fn render(&mut self, watcher: &Watcher) -> err::Result<()> {
-        self.ray_drawer.update_watcher(&self.device, watcher);
-
-        let line_v = inner::gen_line_v(self);
-        if !line_v.is_empty() {
-            self.ray_drawer.update_line_v(&self.device, &line_v);
-
-            // Draw ray tracing result to texture
-            self.ray_drawer
-                .draw_ray_to_point_texture(&self.device, &self.queue);
-        }
-
-        // Let the surface be drew.
-        let output = self
-            .surface
-            .get_current_texture()
-            .map_err(err::map_append("\nat get_current_texture"))?;
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        {
-            // Let the points be drew to current surface.
-            self.surface_drawer.draw_point_to_surface(
-                &self.device,
-                &self.queue,
-                &view,
-                self.ray_drawer.get_result_buffer(),
-                self.ray_drawer.get_size_buffer(),
-            )?;
-
-            // Let the watcher be drew to current surface.
-            self.light_drawer.draw_light_to_surface(
-                &self.device,
-                &self.queue,
-                &view,
-                self.ray_drawer.get_watcher_buffer(),
-                self.ray_drawer.get_size_buffer(),
-                &inner::gen_light_line_v(self),
-            )?;
-        }
-        output.present();
-
-        Ok(())
     }
 
     pub fn create_element(&mut self, class: &str) -> Option<u64> {

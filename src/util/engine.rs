@@ -7,6 +7,7 @@ use edge_lib::util::{
 };
 use nalgebra::{Matrix3, Vector2, Vector3};
 use rapier2d::prelude::{Collider, GenericJoint, IntegrationParameters, RigidBodyHandle};
+use res::RenderPass;
 use structs::Watcher;
 use view_manager::util::{AsViewManager, VNode, ViewProps};
 
@@ -21,6 +22,49 @@ mod drawer;
 mod physics;
 mod res;
 mod structs;
+mod inner {
+    use std::collections::HashMap;
+
+    use view_manager::util::VNode;
+
+    use crate::err;
+
+    use super::{res::RenderPass, AtomElement};
+
+    pub fn render_vnode(
+        vnode_mp: &HashMap<u64, VNode>,
+        element_mp: &HashMap<u64, AtomElement>,
+        rp: &mut RenderPass,
+        vnode_id: u64,
+    ) -> err::Result<()> {
+        let vnode = vnode_mp.get(&vnode_id).unwrap();
+        if vnode.inner_node.data != 0 {
+            // virtual container
+            render_vnode(vnode_mp, element_mp, rp, vnode.inner_node.data)
+        } else {
+            // meta container
+            match vnode.view_props.class.as_str() {
+                "div" => {
+                    for child_node in vnode.embeded_child_v.clone() {
+                        render_vnode(vnode_mp, element_mp, rp, child_node)?;
+                    }
+                }
+                _ => {
+                    let ele = element_mp.get(&vnode_id).unwrap();
+                    match ele {
+                        super::AtomElement::Audio(_) => (),
+                        super::AtomElement::Physics(_) => (),
+                        super::AtomElement::Vision(id) => {
+                            rp.render_element(*id);
+                        }
+                    }
+                }
+            }
+
+            Ok(())
+        }
+    }
+}
 
 pub mod handle;
 
@@ -53,36 +97,6 @@ pub struct RayLook {
 pub struct BodyCollider {
     pub collider_v: Vec<Collider>,
 }
-
-// #[derive(Clone)]
-// pub struct BodyBuilder {
-//     class: String,
-//     name: String,
-//     look: BodyLook,
-//     collider: BodyCollider,
-//     rigid: RigidBody,
-//     life_step_op: Option<u64>,
-// }
-
-// impl BodyBuilder {
-//     pub fn new(
-//         class: String,
-//         name: String,
-//         look: BodyLook,
-//         collider: BodyCollider,
-//         rigid: RigidBody,
-//         life_step_op: Option<u64>,
-//     ) -> Self {
-//         Self {
-//             class,
-//             name,
-//             look,
-//             collider,
-//             rigid,
-//             life_step_op,
-//         }
-//     }
-// }
 
 pub struct Body {
     pub class: String,
@@ -302,11 +316,7 @@ impl Engine {
         {
             let _ = self.event_entry(id, "$:onstep", json::Null).await;
         }
-        Ok(())
-    }
 
-    /// Let the engine be rendered.
-    pub fn render(&mut self) -> err::Result<()> {
         if let Some(ele) = self.element_mp.get(&self.watcher_binding_body_id) {
             if let AtomElement::Physics(h) = ele {
                 if let Some(body) = self.physics_manager.physics_engine.rigid_body_set.get(*h) {
@@ -317,8 +327,15 @@ impl Engine {
             }
         }
 
-        // Let the surface be drew.
-        self.vision_manager.render(&self.watcher)
+        Ok(())
+    }
+
+    /// Let the engine be rendered.
+    pub fn render(&mut self) -> err::Result<()> {
+        let mut rp = RenderPass::new(&mut self.vision_manager, &self.watcher);
+        inner::render_vnode(&self.vnode_mp, &self.element_mp, &mut rp, 0)?;
+        rp.end();
+        Ok(())
     }
 
     pub fn move_watcher(&mut self, offset: Vector2<f32>) {
