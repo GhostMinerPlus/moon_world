@@ -210,7 +210,6 @@ impl EngineBuilder {
 }
 
 pub enum AtomElement {
-    Data(String),
     Audio(()),
     Physics(RigidBodyHandle),
     Vision(u64),
@@ -369,7 +368,6 @@ impl Engine {
     pub fn delete_element(&mut self, id: u64) {
         if let Some(atom_ele) = self.element_mp.remove(&id) {
             match atom_ele {
-                AtomElement::Data(_) => todo!(),
                 AtomElement::Audio(_) => todo!(),
                 AtomElement::Physics(rigid_body_handle) => {
                     self.physics_manager.delete_element(rigid_body_handle)
@@ -383,7 +381,6 @@ impl Engine {
     pub fn update_element(&mut self, id: u64, props: &ViewProps) {
         if let Some(atom_ele) = self.element_mp.get_mut(&id) {
             match atom_ele {
-                AtomElement::Data(_) => todo!(),
                 AtomElement::Audio(_) => todo!(),
                 AtomElement::Physics(rigid_body_handle) => {
                     self.physics_manager
