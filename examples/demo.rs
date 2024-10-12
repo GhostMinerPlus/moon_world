@@ -1,9 +1,12 @@
 use std::{
-    collections::HashMap,
     sync::mpsc::{channel, Sender},
     thread,
 };
 
+use edge_lib::util::{
+    data::{AsDataManager, MemDataManager},
+    Path,
+};
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -14,16 +17,16 @@ use world2::{err, util::engine::EngineBuilder};
 
 static mut WINDOW_OP: Option<Window> = None;
 
-pub struct Application {
+struct Application {
     tx_op: Option<Sender<json::JsonValue>>,
 }
 
 impl Application {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self { tx_op: None }
     }
 
-    pub fn run(mut self) -> err::Result<()> {
+    fn run(mut self) -> err::Result<()> {
         log::info!("run");
         let event_loop = EventLoop::new().map_err(err::map_append("\nat EventLoop::new"))?;
         event_loop.set_control_flow(ControlFlow::Poll);
@@ -43,36 +46,8 @@ impl ApplicationHandler for Application {
             )
         };
 
-        let mut view_class = HashMap::new();
-
-        view_class.insert(
-            "Main".to_string(),
-            vec![
-                format!("$->$:state->$:pos if $->$:state->$:pos $->$:props->$:pos"),
-                //
-                format!("$->$:root = ? _"),
-                format!("$->$:phy_ball = ? _"),
-                format!("$->$:vi_ball = ? _"),
-                //
-                format!("$->$:phy_ball->$:class = Physics:ball _"),
-                format!("$->$:phy_ball->$:props = ? _"),
-                format!("$->$:vi_ball->$:class = Vision:ball _"),
-                format!("$->$:vi_ball->$:props = ? _"),
-                format!("$->$:root->$:class = div _"),
-                format!("$->$:root->$:child = $->$:phy_ball _"),
-                format!("$->$:root->$:child += $->$:root->$:child $->$:vi_ball"),
-                //
-                format!("$->$:phy_ball->$:props->$:onstep = '$->$:state->$:pos\\s$world2_get_pos\\s$->$:vnode_id\\s_' _"),
-                format!("$->$:phy_ball->$:props->$:watcher = true _"),
-                format!("$->$:phy_ball->$:props->$:pos = $->$:state->$:pos _"),
-                format!("$->$:vi_ball->$:props->$:pos = $->$:state->$:pos _"),
-                //
-                format!("$->$:output dump $->$:root $"),
-            ],
-        );
-
         let engine_builder =
-            EngineBuilder::from_window(unsafe { WINDOW_OP.as_ref().unwrap() }, view_class).unwrap();
+            EngineBuilder::from_window(unsafe { WINDOW_OP.as_ref().unwrap() }).unwrap();
         let (tx, rx) = channel::<json::JsonValue>();
         self.tx_op = Some(tx.clone());
         thread::spawn(move || {
@@ -81,7 +56,37 @@ impl ApplicationHandler for Application {
                 .build()
                 .unwrap();
             rt.block_on(async move {
-                let mut engine = engine_builder.build().await.unwrap();
+                let mut dm: Box<MemDataManager> = Box::new(MemDataManager::new(None));
+
+                dm.set(
+                    &Path::from_str("$->Main"),
+                    vec![
+                        format!("$->$:state->$:pos if $->$:state->$:pos $->$:props->$:pos"),
+                        //
+                        format!("$->$:root = ? _"),
+                        format!("$->$:phy_ball = ? _"),
+                        format!("$->$:vi_ball = ? _"),
+                        //
+                        format!("$->$:phy_ball->$:class = Physics:ball _"),
+                        format!("$->$:phy_ball->$:props = ? _"),
+                        format!("$->$:vi_ball->$:class = Vision:ball _"),
+                        format!("$->$:vi_ball->$:props = ? _"),
+                        format!("$->$:root->$:class = div _"),
+                        format!("$->$:root->$:child = $->$:phy_ball _"),
+                        format!("$->$:root->$:child += $->$:root->$:child $->$:vi_ball"),
+                        //
+                        format!("$->$:phy_ball->$:props->$:onstep = '$->$:state->$:pos\\s$world2_get_pos\\s$->$:vnode_id\\s_' _"),
+                        format!("$->$:phy_ball->$:props->$:watcher = true _"),
+                        format!("$->$:phy_ball->$:props->$:pos = $->$:state->$:pos _"),
+                        format!("$->$:vi_ball->$:props->$:pos = $->$:state->$:pos _"),
+                        //
+                        format!("$->$:output dump $->$:root $"),
+                    ],
+                )
+                .await
+                .unwrap();
+
+                let mut engine = engine_builder.build(dm).await.unwrap();
                 loop {
                     while let Ok(event) = rx.try_recv() {
                         let entry_name = event["entry_name"].as_str().unwrap();

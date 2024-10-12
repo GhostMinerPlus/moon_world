@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::mpsc::channel};
 
 use nalgebra::{vector, Matrix3, Vector3};
 use rapier2d::prelude::{
-    Collider, ColliderBuilder, IntegrationParameters, RigidBody, RigidBodyBuilder, RigidBodyHandle,
+    ColliderBuilder, IntegrationParameters, RigidBodyBuilder, RigidBodyHandle,
 };
 use rodio::{cpal::FromSample, OutputStream, Sample, Sink, Source};
 use view_manager::util::ViewProps;
@@ -12,13 +12,13 @@ use crate::{err, util::shape::Shape};
 use super::{
     drawer, physics,
     structs::{self, Watcher},
-    Body, BodyBuilder, BodyLook, RayLook,
+    Body, BodyLook, RayLook,
 };
 
 mod inner {
     use std::sync::mpsc::Sender;
 
-    use nalgebra::{Matrix3, Point2};
+    use nalgebra::Point2;
     use rapier2d::prelude::{
         Collider, ContactForceEvent, EventHandler, RigidBody, RigidBodyHandle,
     };

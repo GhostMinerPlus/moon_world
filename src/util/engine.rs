@@ -1,15 +1,16 @@
 //! Help the crate be a video provider or a event handler.
 //! - video provider > frame provider + step
 
-use edge_lib::util::data::{AsDataManager, AsStack, MemDataManager, TempDataManager};
-use nalgebra::{Matrix3, Vector2, Vector3};
-use rapier2d::prelude::{
-    Collider, GenericJoint, IntegrationParameters, RigidBody, RigidBodyHandle,
+use edge_lib::util::{
+    data::{AsDataManager, AsStack, TempDataManager},
+    Path,
 };
+use nalgebra::{Matrix3, Vector2, Vector3};
+use rapier2d::prelude::{Collider, GenericJoint, IntegrationParameters, RigidBodyHandle};
 use structs::Watcher;
 use view_manager::util::{AsViewManager, VNode, ViewProps};
 
-use std::{collections::HashMap, io};
+use std::{collections::HashMap, future::Future, io, pin::Pin};
 use wgpu::{Instance, Surface};
 
 use winit::{dpi::PhysicalSize, window::Window};
@@ -21,7 +22,6 @@ mod physics;
 mod res;
 mod structs;
 
-pub mod builder;
 pub mod handle;
 
 #[derive(Clone)]
@@ -54,35 +54,35 @@ pub struct BodyCollider {
     pub collider_v: Vec<Collider>,
 }
 
-#[derive(Clone)]
-pub struct BodyBuilder {
-    class: String,
-    name: String,
-    look: BodyLook,
-    collider: BodyCollider,
-    rigid: RigidBody,
-    life_step_op: Option<u64>,
-}
+// #[derive(Clone)]
+// pub struct BodyBuilder {
+//     class: String,
+//     name: String,
+//     look: BodyLook,
+//     collider: BodyCollider,
+//     rigid: RigidBody,
+//     life_step_op: Option<u64>,
+// }
 
-impl BodyBuilder {
-    pub fn new(
-        class: String,
-        name: String,
-        look: BodyLook,
-        collider: BodyCollider,
-        rigid: RigidBody,
-        life_step_op: Option<u64>,
-    ) -> Self {
-        Self {
-            class,
-            name,
-            look,
-            collider,
-            rigid,
-            life_step_op,
-        }
-    }
-}
+// impl BodyBuilder {
+//     pub fn new(
+//         class: String,
+//         name: String,
+//         look: BodyLook,
+//         collider: BodyCollider,
+//         rigid: RigidBody,
+//         life_step_op: Option<u64>,
+//     ) -> Self {
+//         Self {
+//             class,
+//             name,
+//             look,
+//             collider,
+//             rigid,
+//             life_step_op,
+//         }
+//     }
+// }
 
 pub struct Body {
     pub class: String,
@@ -101,14 +101,10 @@ pub struct EngineBuilder {
     instance: Instance,
     surface: Surface<'static>,
     size: PhysicalSize<u32>,
-    view_class: HashMap<String, Vec<String>>,
 }
 
 impl EngineBuilder {
-    pub fn from_window(
-        window: &'static Window,
-        view_class: HashMap<String, Vec<String>>,
-    ) -> err::Result<Self> {
+    pub fn from_window(window: &'static Window) -> err::Result<Self> {
         let size = window.inner_size();
         // The instance is a handle to our GPU
         // Backends::all => Vulkan + Metal + DX12 + Browser WebGPU
@@ -124,11 +120,10 @@ impl EngineBuilder {
             instance,
             surface,
             size,
-            view_class,
         })
     }
 
-    pub async fn build(self) -> err::Result<Engine> {
+    pub async fn build(self, dm: Box<dyn AsDataManager>) -> err::Result<Engine> {
         let adapter = self
             .instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -191,8 +186,7 @@ impl EngineBuilder {
         let ray_drawer = drawer::RayDrawer::new(&device, self.size);
 
         Ok(Engine::new(
-            Box::new(MemDataManager::new(None)),
-            self.view_class,
+            dm,
             res::AudioManager::new(),
             res::PhysicsManager::new(IntegrationParameters::default()),
             res::VisionManager::new(
@@ -220,7 +214,6 @@ pub struct Engine {
     unique_id: u64,
     time_stamp: u128,
     vnode_mp: HashMap<u64, VNode>,
-    view_class: HashMap<String, Vec<String>>,
     watcher_binding_body_id: u64,
     element_mp: HashMap<u64, AtomElement>,
     element_index_mp: HashMap<String, HashMap<String, u64>>,
@@ -236,7 +229,6 @@ impl Engine {
     /// [Engine] constructor.
     pub async fn new(
         dm: Box<dyn AsDataManager>,
-        view_class: HashMap<String, Vec<String>>,
         audio_manager: res::AudioManager,
         physics_manager: res::PhysicsManager,
         vision_manager: res::VisionManager,
@@ -245,7 +237,6 @@ impl Engine {
             unique_id: 0,
             time_stamp: 0,
             vnode_mp: HashMap::new(),
-            view_class,
             watcher_binding_body_id: 0,
             element_mp: HashMap::new(),
             element_index_mp: HashMap::new(),
@@ -517,8 +508,25 @@ impl AsStack for Engine {
 }
 
 impl AsViewManager for Engine {
-    fn get_class(&self, class: &str) -> Option<&Vec<String>> {
-        self.view_class.get(class)
+    fn get_class<'a, 'a1, 'f>(
+        &'a self,
+        class: &'a1 str,
+    ) -> Pin<Box<dyn Future<Output = Option<Vec<String>>> + Send + 'f>>
+    where
+        'a: 'f,
+        'a1: 'f,
+    {
+        Box::pin(async move {
+            let rs = self
+                .get(&Path::from_str(&format!("$->{class}")))
+                .await
+                .unwrap();
+            if rs.is_empty() {
+                None
+            } else {
+                Some(rs)
+            }
+        })
     }
 
     fn get_vnode(&self, id: &u64) -> Option<&VNode> {
