@@ -2,7 +2,7 @@
 //! - video provider > frame provider + step
 
 use edge_lib::util::{
-    data::{AsDataManager, AsStack, TempDataManager},
+    data::AsDataManager,
     Path,
 };
 use nalgebra::{Matrix3, Vector2, Vector3};
@@ -234,7 +234,7 @@ pub struct Engine {
     element_index_mp: HashMap<String, HashMap<String, u64>>,
     watcher: Watcher,
 
-    data_manager: TempDataManager,
+    data_manager: Box<dyn AsDataManager>,
     audio_manager: res::AudioManager,
     physics_manager: res::PhysicsManager,
     vision_manager: res::VisionManager,
@@ -259,7 +259,7 @@ impl Engine {
                 position: [0.0, 0.0],
                 offset: [0.0, 0.0],
             },
-            data_manager: TempDataManager::new(dm),
+            data_manager: dm,
             audio_manager,
             physics_manager,
             vision_manager,
@@ -508,20 +508,6 @@ impl AsDataManager for Engine {
         'a2: 'f,
     {
         self.data_manager.get_code_v(root, space)
-    }
-}
-
-impl AsStack for Engine {
-    fn push<'a, 'f>(
-        &'a mut self,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<()>> + Send + 'f>> {
-        self.data_manager.push()
-    }
-
-    fn pop<'a, 'f>(
-        &'a mut self,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<()>> + Send + 'f>> {
-        self.data_manager.pop()
     }
 }
 
