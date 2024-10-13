@@ -31,6 +31,7 @@ mod inner {
 
     use super::{res::RenderPass, AtomElement};
 
+    /// Let vnode be rendered.
     pub fn render_vnode(
         vnode_mp: &HashMap<u64, VNode>,
         element_mp: &HashMap<u64, AtomElement>,
@@ -39,10 +40,10 @@ mod inner {
     ) -> err::Result<()> {
         let vnode = vnode_mp.get(&vnode_id).unwrap();
         if vnode.inner_node.data != 0 {
-            // virtual container
+            // Let virtual container be rendered.
             render_vnode(vnode_mp, element_mp, rp, vnode.inner_node.data)
         } else {
-            // meta container
+            // Let meta container or meta tag be rendered.
             match vnode.view_props.class.as_str() {
                 "div" => {
                     for child_node in vnode.embeded_child_v.clone() {
