@@ -11,7 +11,7 @@ use res::RenderPass;
 use structs::Watcher;
 use view_manager::util::{AsViewManager, VNode, ViewProps};
 
-use std::{collections::HashMap, future::Future, io, pin::Pin};
+use std::{collections::HashMap, future::Future, pin::Pin};
 use wgpu::{Instance, Surface};
 
 use winit::{dpi::PhysicalSize, window::Window};
@@ -415,7 +415,7 @@ impl AsDataManager for Engine {
         func: &'a2 str,
         input: &'a3 edge_lib::util::Path,
         input1: &'a4 edge_lib::util::Path,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<()>> + Send + 'f>>
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = edge_lib::err::Result<()>> + Send + 'f>>
     where
         'a: 'f,
         'a1: 'f,
@@ -446,7 +446,7 @@ impl AsDataManager for Engine {
                         self.set(output, vec![pos.x.to_string(), pos.y.to_string()])
                             .await
                     } else {
-                        Err(io::Error::other(format!("no an AtomElement::Physics")))
+                        Err(edge_lib::err::Error::new(edge_lib::err::ErrorKind::NotFound, format!("no an AtomElement::Physics")))
                     }
                 }
                 _ => self.data_manager.call(output, func, input, input1).await,
@@ -462,7 +462,7 @@ impl AsDataManager for Engine {
         &'a mut self,
         path: &'a1 edge_lib::util::Path,
         item_v: Vec<String>,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<()>> + Send + 'f>>
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = edge_lib::err::Result<()>> + Send + 'f>>
     where
         'a: 'f,
         'a1: 'f,
@@ -474,7 +474,7 @@ impl AsDataManager for Engine {
         &'a mut self,
         path: &'a1 edge_lib::util::Path,
         item_v: Vec<String>,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<()>> + Send + 'f>>
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = edge_lib::err::Result<()>> + Send + 'f>>
     where
         'a: 'f,
         'a1: 'f,
@@ -486,7 +486,7 @@ impl AsDataManager for Engine {
         &'a self,
         path: &'a1 edge_lib::util::Path,
     ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = std::io::Result<Vec<String>>> + Send + 'f>,
+        Box<dyn std::future::Future<Output = edge_lib::err::Result<Vec<String>>> + Send + 'f>,
     >
     where
         'a: 'f,
@@ -500,7 +500,7 @@ impl AsDataManager for Engine {
         root: &'a1 str,
         space: &'a2 str,
     ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = std::io::Result<Vec<String>>> + Send + 'f>,
+        Box<dyn std::future::Future<Output = edge_lib::err::Result<Vec<String>>> + Send + 'f>,
     >
     where
         'a: 'f,
