@@ -59,7 +59,7 @@ impl ApplicationHandler for Application {
                 let mut dm: Box<MemDataManager> = Box::new(MemDataManager::new(None));
 
                 dm.set(
-                    &Path::from_str("$->Main"),
+                    &Path::from_str("Main->$w:view"),
                     vec![
                         format!("$->$:state->$:pos if $->$:state->$:pos $->$:props->$:pos"),
                         //

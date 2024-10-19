@@ -522,7 +522,7 @@ impl AsViewManager for Engine {
     {
         Box::pin(async move {
             let rs = self
-                .get(&Path::from_str(&format!("$->{class}")))
+                .get(&Path::from_str(&format!("{class}->$w:view")))
                 .await
                 .unwrap();
             if rs.is_empty() {
