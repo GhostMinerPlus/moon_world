@@ -2,7 +2,7 @@
 //! - video provider > frame provider + step
 
 use edge_lib::util::{
-    data::{AsDataManager, AsStack, TempDataManager},
+    data::{AsDataManager, Fu},
     Path,
 };
 use nalgebra::{Matrix3, Vector2, Vector3};
@@ -11,7 +11,7 @@ use res::RenderPass;
 use structs::Watcher;
 use view_manager::util::{AsViewManager, VNode, ViewProps};
 
-use std::{collections::HashMap, future::Future, io, pin::Pin};
+use std::{collections::HashMap, future::Future, pin::Pin};
 use wgpu::{Instance, Surface};
 
 use winit::{dpi::PhysicalSize, window::Window};
@@ -31,6 +31,7 @@ mod inner {
 
     use super::{res::RenderPass, AtomElement};
 
+    /// Let vnode be rendered.
     pub fn render_vnode(
         vnode_mp: &HashMap<u64, VNode>,
         element_mp: &HashMap<u64, AtomElement>,
@@ -39,10 +40,10 @@ mod inner {
     ) -> err::Result<()> {
         let vnode = vnode_mp.get(&vnode_id).unwrap();
         if vnode.inner_node.data != 0 {
-            // virtual container
+            // Let virtual container be rendered.
             render_vnode(vnode_mp, element_mp, rp, vnode.inner_node.data)
         } else {
-            // meta container
+            // Let meta container or meta tag be rendered.
             match vnode.view_props.class.as_str() {
                 "div" => {
                     for child_node in vnode.embeded_child_v.clone() {
@@ -127,9 +128,18 @@ impl EngineBuilder {
             ..Default::default()
         });
 
-        let surface = instance
-            .create_surface(window)
-            .map_err(err::map_append("\nat create_surface"))?;
+        let surface = instance.create_surface(window).map_err(|e| {
+            let stack = format!("at create_surface");
+
+            log::error!("{e:?}\n{stack}");
+
+            moon_err::Error::new(
+                err::ErrorKind::Other(format!("CreateSurfaceError")),
+                format!("failed to create surface"),
+                stack,
+            )
+        })?;
+
         Ok(Self {
             instance,
             surface,
@@ -146,7 +156,11 @@ impl EngineBuilder {
                 force_fallback_adapter: false,
             })
             .await
-            .ok_or(err::Error::Other("no adapter".to_string()))?;
+            .ok_or(moon_err::Error::new(
+                err::ErrorKind::NotFound,
+                format!("failed to request adapter"),
+                format!("at request_adapter"),
+            ))?;
 
         let (device, queue) = {
             adapter
@@ -162,12 +176,24 @@ impl EngineBuilder {
                     None, // Trace path
                 )
                 .await
-                .map_err(err::map_append("\nat request_device"))?
+                .map_err(|e| {
+                    let stack = format!("at request_device");
+
+                    log::error!("{e:?}\n{stack}");
+
+                    moon_err::Error::new(
+                        err::ErrorKind::Other(format!("RequestDeviceError")),
+                        format!("failed to request device"),
+                        stack,
+                    )
+                })?
         };
-        log::info!("found device: {:?}", device);
+
+        log::debug!("found device: {:?}", device);
 
         let config = {
             let surface_caps = self.surface.get_capabilities(&adapter);
+
             // Shader code in this tutorial assumes an sRGB surface texture. Using a different
             // one will result all the colors coming out darker. If you want to support non
             // sRGB surfaces, you'll need to account for that when drawing to the frame.
@@ -177,7 +203,12 @@ impl EngineBuilder {
                 .copied()
                 .filter(|f| f.is_srgb())
                 .next()
-                .ok_or(err::Error::Other("no surface_caps.formats".to_string()))?;
+                .ok_or(moon_err::Error::new(
+                    err::ErrorKind::NotFound,
+                    "no surface_caps.formats".to_string(),
+                    format!("at next"),
+                ))?;
+
             let config = wgpu::SurfaceConfiguration {
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                 format: surface_format,
@@ -189,7 +220,9 @@ impl EngineBuilder {
                 desired_maximum_frame_latency: 2,
             };
             self.surface.configure(&device, &config);
+
             log::info!("prepared surface: {:?}", config);
+
             config
         };
 
@@ -233,7 +266,7 @@ pub struct Engine {
     element_index_mp: HashMap<String, HashMap<String, u64>>,
     watcher: Watcher,
 
-    data_manager: TempDataManager,
+    data_manager: Box<dyn AsDataManager>,
     audio_manager: res::AudioManager,
     physics_manager: res::PhysicsManager,
     vision_manager: res::VisionManager,
@@ -258,7 +291,7 @@ impl Engine {
                 position: [0.0, 0.0],
                 offset: [0.0, 0.0],
             },
-            data_manager: TempDataManager::new(dm),
+            data_manager: dm,
             audio_manager,
             physics_manager,
             vision_manager,
@@ -414,7 +447,7 @@ impl AsDataManager for Engine {
         func: &'a2 str,
         input: &'a3 edge_lib::util::Path,
         input1: &'a4 edge_lib::util::Path,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<()>> + Send + 'f>>
+    ) -> std::pin::Pin<Box<dyn Fu<Output = edge_lib::err::Result<()>> + 'f>>
     where
         'a: 'f,
         'a1: 'f,
@@ -445,7 +478,11 @@ impl AsDataManager for Engine {
                         self.set(output, vec![pos.x.to_string(), pos.y.to_string()])
                             .await
                     } else {
-                        Err(io::Error::other(format!("no an AtomElement::Physics")))
+                        Err(moon_err::Error::new(
+                            edge_lib::err::ErrorKind::NotFound,
+                            format!("no an AtomElement::Physics"),
+                            format!("at call"),
+                        ))
                     }
                 }
                 _ => self.data_manager.call(output, func, input, input1).await,
@@ -461,7 +498,7 @@ impl AsDataManager for Engine {
         &'a mut self,
         path: &'a1 edge_lib::util::Path,
         item_v: Vec<String>,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<()>> + Send + 'f>>
+    ) -> std::pin::Pin<Box<dyn Fu<Output = edge_lib::err::Result<()>> + 'f>>
     where
         'a: 'f,
         'a1: 'f,
@@ -473,7 +510,7 @@ impl AsDataManager for Engine {
         &'a mut self,
         path: &'a1 edge_lib::util::Path,
         item_v: Vec<String>,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<()>> + Send + 'f>>
+    ) -> std::pin::Pin<Box<dyn Fu<Output = edge_lib::err::Result<()>> + 'f>>
     where
         'a: 'f,
         'a1: 'f,
@@ -484,9 +521,7 @@ impl AsDataManager for Engine {
     fn get<'a, 'a1, 'f>(
         &'a self,
         path: &'a1 edge_lib::util::Path,
-    ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = std::io::Result<Vec<String>>> + Send + 'f>,
-    >
+    ) -> std::pin::Pin<Box<dyn Fu<Output = edge_lib::err::Result<Vec<String>>> + 'f>>
     where
         'a: 'f,
         'a1: 'f,
@@ -498,29 +533,13 @@ impl AsDataManager for Engine {
         &'a self,
         root: &'a1 str,
         space: &'a2 str,
-    ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = std::io::Result<Vec<String>>> + Send + 'f>,
-    >
+    ) -> std::pin::Pin<Box<dyn Fu<Output = edge_lib::err::Result<Vec<String>>> + 'f>>
     where
         'a: 'f,
         'a1: 'f,
         'a2: 'f,
     {
         self.data_manager.get_code_v(root, space)
-    }
-}
-
-impl AsStack for Engine {
-    fn push<'a, 'f>(
-        &'a mut self,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<()>> + Send + 'f>> {
-        self.data_manager.push()
-    }
-
-    fn pop<'a, 'f>(
-        &'a mut self,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<()>> + Send + 'f>> {
-        self.data_manager.pop()
     }
 }
 
@@ -535,7 +554,7 @@ impl AsViewManager for Engine {
     {
         Box::pin(async move {
             let rs = self
-                .get(&Path::from_str(&format!("$->{class}")))
+                .get(&Path::from_str(&format!("{class}->$w:view")))
                 .await
                 .unwrap();
             if rs.is_empty() {

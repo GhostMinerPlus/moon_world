@@ -8,7 +8,7 @@ use rodio::{cpal::FromSample, OutputStream, Sample, Sink, Source};
 use view_manager::util::ViewProps;
 use wgpu::{SurfaceTexture, TextureView};
 
-use crate::{err, util::shape::Shape};
+use crate::util::shape::Shape;
 
 use super::{
     drawer, physics,
