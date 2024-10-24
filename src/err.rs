@@ -1,25 +1,7 @@
-//! Help the crate be a world2 error provider.
-
-use std::fmt::Display;
-
-#[derive(Debug)]
-pub enum Error {
+#[derive(Debug, Clone)]
+pub enum ErrorKind {
     Other(String),
+    NotFound,
 }
 
-impl Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Error::Other(msg) => write!(f, "{msg}"),
-        }
-    }
-}
-
-pub type Result<T> = std::result::Result<T, Error>;
-
-pub fn map_append<E>(append: &'static str) -> impl Fn(E) -> Error
-where
-    E: Display,
-{
-    move |e: E| Error::Other(format!("{e}{append}"))
-}
+pub type Result<T> = std::result::Result<T, moon_err::Error<ErrorKind>>;

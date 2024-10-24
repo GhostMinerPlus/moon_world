@@ -1,10 +1,7 @@
 //! Help the crate be a video provider or a event handler.
 //! - video provider > frame provider + step
 
-use edge_lib::util::{
-    data::AsDataManager,
-    Path,
-};
+use edge_lib::util::{data::AsDataManager, Path};
 use nalgebra::{Matrix3, Vector2, Vector3};
 use rapier2d::prelude::{Collider, GenericJoint, IntegrationParameters, RigidBodyHandle};
 use res::RenderPass;
@@ -128,9 +125,18 @@ impl EngineBuilder {
             ..Default::default()
         });
 
-        let surface = instance
-            .create_surface(window)
-            .map_err(err::map_append("\nat create_surface"))?;
+        let surface = instance.create_surface(window).map_err(|e| {
+            let stack = format!("at create_surface");
+
+            log::error!("{e:?}\n{stack}");
+
+            moon_err::Error::new(
+                err::ErrorKind::Other(format!("CreateSurfaceError")),
+                format!("failed to create surface"),
+                stack,
+            )
+        })?;
+
         Ok(Self {
             instance,
             surface,
@@ -147,7 +153,11 @@ impl EngineBuilder {
                 force_fallback_adapter: false,
             })
             .await
-            .ok_or(err::Error::Other("no adapter".to_string()))?;
+            .ok_or(moon_err::Error::new(
+                err::ErrorKind::NotFound,
+                format!("failed to request adapter"),
+                format!("at request_adapter"),
+            ))?;
 
         let (device, queue) = {
             adapter
@@ -163,12 +173,24 @@ impl EngineBuilder {
                     None, // Trace path
                 )
                 .await
-                .map_err(err::map_append("\nat request_device"))?
+                .map_err(|e| {
+                    let stack = format!("at request_device");
+
+                    log::error!("{e:?}\n{stack}");
+
+                    moon_err::Error::new(
+                        err::ErrorKind::Other(format!("RequestDeviceError")),
+                        format!("failed to request device"),
+                        stack,
+                    )
+                })?
         };
-        log::info!("found device: {:?}", device);
+
+        log::debug!("found device: {:?}", device);
 
         let config = {
             let surface_caps = self.surface.get_capabilities(&adapter);
+
             // Shader code in this tutorial assumes an sRGB surface texture. Using a different
             // one will result all the colors coming out darker. If you want to support non
             // sRGB surfaces, you'll need to account for that when drawing to the frame.
@@ -178,7 +200,12 @@ impl EngineBuilder {
                 .copied()
                 .filter(|f| f.is_srgb())
                 .next()
-                .ok_or(err::Error::Other("no surface_caps.formats".to_string()))?;
+                .ok_or(moon_err::Error::new(
+                    err::ErrorKind::NotFound,
+                    "no surface_caps.formats".to_string(),
+                    format!("at next"),
+                ))?;
+
             let config = wgpu::SurfaceConfiguration {
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                 format: surface_format,
@@ -190,7 +217,9 @@ impl EngineBuilder {
                 desired_maximum_frame_latency: 2,
             };
             self.surface.configure(&device, &config);
+
             log::info!("prepared surface: {:?}", config);
+
             config
         };
 
@@ -446,7 +475,10 @@ impl AsDataManager for Engine {
                         self.set(output, vec![pos.x.to_string(), pos.y.to_string()])
                             .await
                     } else {
-                        Err(edge_lib::err::Error::new(edge_lib::err::ErrorKind::NotFound, format!("no an AtomElement::Physics")))
+                        Err(edge_lib::err::Error::new(
+                            edge_lib::err::ErrorKind::NotFound,
+                            format!("no an AtomElement::Physics"),
+                        ))
                     }
                 }
                 _ => self.data_manager.call(output, func, input, input1).await,

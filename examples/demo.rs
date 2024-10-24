@@ -28,11 +28,27 @@ impl Application {
 
     fn run(mut self) -> err::Result<()> {
         log::info!("run");
-        let event_loop = EventLoop::new().map_err(err::map_append("\nat EventLoop::new"))?;
+        let event_loop = EventLoop::new().map_err(|e| {
+            log::error!("{e}\nat EventLoop::new");
+
+            moon_err::Error::new(
+                err::ErrorKind::Other(format!("EventLoopError")),
+                format!("failed to create EventLoop"),
+                format!("at EventLoop::new"),
+            )
+        })?;
+
         event_loop.set_control_flow(ControlFlow::Poll);
-        event_loop
-            .run_app(&mut self)
-            .map_err(err::map_append("\nat run_app"))
+
+        event_loop.run_app(&mut self).map_err(|e| {
+            log::error!("{e}\nat EventLoop::run_app");
+
+            moon_err::Error::new(
+                err::ErrorKind::Other(format!("EventLoopError")),
+                format!("failed to run app"),
+                format!("at EventLoop::run_app"),
+            )
+        })
     }
 }
 
@@ -92,14 +108,14 @@ impl ApplicationHandler for Application {
                         let entry_name = event["entry_name"].as_str().unwrap();
                         let event = &event["event"];
                         if let Err(e) = engine.event_handler(entry_name, event).await {
-                            log::error!("{e}\nat event_handler");
+                            log::error!("{e:?}\nat event_handler");
                         }
                     }
                     if let Err(e) = engine.step().await {
-                        log::error!("{e}\nat step");
+                        log::error!("{e:?}\nat step");
                     }
                     if let Err(e) = engine.render() {
-                        log::error!("{e}\nat render");
+                        log::error!("{e:?}\nat render");
                     }
                 }
             });
