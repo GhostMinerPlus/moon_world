@@ -7,13 +7,13 @@ use edge_lib::util::{
     data::{AsDataManager, MemDataManager},
     Path,
 };
+use moon_world::{err, util::engine::EngineBuilder};
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     window::{Window, WindowId},
 };
-use world2::{err, util::engine::EngineBuilder};
 
 static mut WINDOW_OP: Option<Window> = None;
 
