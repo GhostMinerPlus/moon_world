@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+error-stack = "0.5"
 bytemuck = { version = "1.16", features = [ "derive" ] }
 log = "0.4"
 nalgebra = "0.33"
@@ -18,7 +19,6 @@ json = "0.12"
 edge_lib = { git = "https://github.com/GhostMinerPlus/edge_lib.git" }
 sqlite-dm = { git = "https://github.com/GhostMinerPlus/edge_lib.git" }
 view-manager = { git = "https://github.com/GhostMinerPlus/view-manager.git" }
-moon_err = { git = "https://github.com/GhostMinerPlus/moon_err.git" }
 
 [dev-dependencies]
 env_logger = "0.11"

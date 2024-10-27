@@ -7,6 +7,7 @@ use edge_lib::util::{
     data::{AsDataManager, MemDataManager},
     Path,
 };
+use error_stack::ResultExt;
 use moon_world::{err, util::engine::EngineBuilder};
 use winit::{
     application::ApplicationHandler,
@@ -28,27 +29,13 @@ impl Application {
 
     fn run(mut self) -> err::Result<()> {
         log::info!("run");
-        let event_loop = EventLoop::new().map_err(|e| {
-            log::error!("{e}\nat EventLoop::new");
-
-            moon_err::Error::new(
-                err::ErrorKind::Other(format!("EventLoopError")),
-                format!("failed to create EventLoop"),
-                format!("at EventLoop::new"),
-            )
-        })?;
+        let event_loop = EventLoop::new().change_context(err::Error::Other)?;
 
         event_loop.set_control_flow(ControlFlow::Poll);
 
-        event_loop.run_app(&mut self).map_err(|e| {
-            log::error!("{e}\nat EventLoop::run_app");
-
-            moon_err::Error::new(
-                err::ErrorKind::Other(format!("EventLoopError")),
-                format!("failed to run app"),
-                format!("at EventLoop::run_app"),
-            )
-        })
+        event_loop
+            .run_app(&mut self)
+            .change_context(err::Error::Other)
     }
 }
 

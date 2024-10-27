@@ -1,23 +1,6 @@
 //! Help the crate be a video provider or a event handler.
 //! - video provider > frame provider + step
 
-use edge_lib::util::{
-    data::{AsDataManager, Fu},
-    Path,
-};
-use nalgebra::{Matrix3, Vector2, Vector3};
-use rapier2d::prelude::{Collider, GenericJoint, IntegrationParameters, RigidBodyHandle};
-use res::RenderPass;
-use structs::Watcher;
-use view_manager::util::{AsViewManager, VNode, ViewProps};
-
-use std::{collections::HashMap, future::Future, pin::Pin};
-use wgpu::{Instance, Surface};
-
-use winit::{dpi::PhysicalSize, window::Window};
-
-use crate::{err, util::shape};
-
 mod drawer;
 mod physics;
 mod res;
@@ -68,6 +51,24 @@ mod inner {
 }
 
 pub mod handle;
+
+use edge_lib::util::{
+    data::{AsDataManager, Fu},
+    Path,
+};
+use error_stack::ResultExt;
+use nalgebra::{Matrix3, Vector2, Vector3};
+use rapier2d::prelude::{Collider, GenericJoint, IntegrationParameters, RigidBodyHandle};
+use res::RenderPass;
+use structs::Watcher;
+use view_manager::util::{AsViewManager, VNode, ViewProps};
+
+use std::{collections::HashMap, future::Future, pin::Pin};
+use wgpu::{Instance, Surface};
+
+use winit::{dpi::PhysicalSize, window::Window};
+
+use crate::{err, util::shape};
 
 #[derive(Clone)]
 pub struct BodyLook {
@@ -128,17 +129,9 @@ impl EngineBuilder {
             ..Default::default()
         });
 
-        let surface = instance.create_surface(window).map_err(|e| {
-            let stack = format!("at create_surface");
-
-            log::error!("{e:?}\n{stack}");
-
-            moon_err::Error::new(
-                err::ErrorKind::Other(format!("CreateSurfaceError")),
-                format!("failed to create surface"),
-                stack,
-            )
-        })?;
+        let surface = instance
+            .create_surface(window)
+            .change_context(err::Error::Other)?;
 
         Ok(Self {
             instance,
@@ -156,11 +149,7 @@ impl EngineBuilder {
                 force_fallback_adapter: false,
             })
             .await
-            .ok_or(moon_err::Error::new(
-                err::ErrorKind::NotFound,
-                format!("failed to request adapter"),
-                format!("at request_adapter"),
-            ))?;
+            .ok_or(err::Error::NotFound)?;
 
         let (device, queue) = {
             adapter
@@ -176,17 +165,7 @@ impl EngineBuilder {
                     None, // Trace path
                 )
                 .await
-                .map_err(|e| {
-                    let stack = format!("at request_device");
-
-                    log::error!("{e:?}\n{stack}");
-
-                    moon_err::Error::new(
-                        err::ErrorKind::Other(format!("RequestDeviceError")),
-                        format!("failed to request device"),
-                        stack,
-                    )
-                })?
+                .change_context(err::Error::Other)?
         };
 
         log::debug!("found device: {:?}", device);
@@ -203,11 +182,7 @@ impl EngineBuilder {
                 .copied()
                 .filter(|f| f.is_srgb())
                 .next()
-                .ok_or(moon_err::Error::new(
-                    err::ErrorKind::NotFound,
-                    "no surface_caps.formats".to_string(),
-                    format!("at next"),
-                ))?;
+                .ok_or(err::Error::NotFound)?;
 
             let config = wgpu::SurfaceConfiguration {
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -478,11 +453,8 @@ impl AsDataManager for Engine {
                         self.set(output, vec![pos.x.to_string(), pos.y.to_string()])
                             .await
                     } else {
-                        Err(moon_err::Error::new(
-                            edge_lib::err::ErrorKind::NotFound,
-                            format!("no an AtomElement::Physics"),
-                            format!("at call"),
-                        ))
+                        Err(edge_lib::err::Error::NotFound)
+                            .attach_printable(format!("not such function named {func}"))
                     }
                 }
                 _ => self.data_manager.call(output, func, input, input1).await,
