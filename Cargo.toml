@@ -1,3 +1,6 @@
+[workspace]
+members = [".", "drawer"]
+
 [package]
 name = "moon_world"
 version = "0.1.0"
@@ -11,7 +14,7 @@ nalgebra = "0.33"
 rand_distr = "0.4"
 rapier2d = "0.22"
 rodio = "0.19"
-wgpu = "22.0"
+wgpu = "22.1"
 winit = "0.30"
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
 json = "0.12"
@@ -19,6 +22,8 @@ json = "0.12"
 edge_lib = { git = "https://github.com/GhostMinerPlus/edge_lib.git" }
 sqlite-dm = { git = "https://github.com/GhostMinerPlus/edge_lib.git" }
 view-manager = { git = "https://github.com/GhostMinerPlus/view-manager.git" }
+
+drawer = { path = "drawer" }
 
 [dev-dependencies]
 env_logger = "0.11"

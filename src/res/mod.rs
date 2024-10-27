@@ -1,19 +1,28 @@
-use std::{collections::HashMap, sync::mpsc::channel};
+use std::{
+    collections::HashMap,
+    sync::{mpsc::channel, Arc},
+};
 
+use drawer::structs::{self, Watcher};
 use nalgebra::{vector, Matrix3, Vector3};
 use rapier2d::prelude::{
     ColliderBuilder, IntegrationParameters, RigidBodyBuilder, RigidBodyHandle,
 };
 use rodio::{cpal::FromSample, OutputStream, Sample, Sink, Source};
 use view_manager::util::ViewProps;
-use wgpu::{SurfaceTexture, TextureView};
+use wgpu::{
+    util::{BufferInitDescriptor, DeviceExt},
+    BufferUsages, SurfaceTexture, TextureView,
+};
 
-use crate::util::shape::Shape;
+use crate::{
+    err,
+    util::{shape::Shape, ThreeLook},
+};
 
 use super::{
-    drawer, physics,
-    structs::{self, Watcher},
-    Body, BodyLook, RayLook,
+    physics,
+    util::{Body, BodyLook, RayLook},
 };
 
 mod inner {
@@ -24,7 +33,7 @@ mod inner {
         Collider, ContactForceEvent, EventHandler, RigidBody, RigidBodyHandle,
     };
 
-    use crate::util::engine::structs::{Line, LineIn};
+    use drawer::structs::{Line, LineIn};
 
     use super::{PhysicsManager, VisionManager};
 
@@ -239,49 +248,44 @@ pub struct RenderPass<'a> {
 }
 
 impl<'a> RenderPass<'a> {
-    pub fn new(vm: &'a mut VisionManager, watcher: &Watcher) -> Self {
-        vm.ray_drawer.update_watcher(&vm.device, watcher);
-        // Let the surface be drew.
-        let output = vm.surface.get_current_texture().unwrap();
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        let id_v = Vec::new();
-
-        Self {
-            vm,
-            output,
-            view,
-            id_v,
-        }
-    }
-
-    pub fn render_element(&mut self, id: u64) {
+    pub fn push_element(&mut self, id: u64) {
         self.id_v.push(id);
     }
 
-    pub fn end(self) {
-        let line_v = inner::gen_line_v(self.vm, &self.id_v);
-        if !line_v.is_empty() {
-            self.vm.ray_drawer.update_line_v(&self.vm.device, &line_v);
+    pub fn render(self) -> err::Result<()> {
+        // self.vm.three_drawer.render(
+        //     &self.vm.device,
+        //     &self.vm.queue,
+        //     &self.view,
+        //     self.vm.ray_drawer.get_watcher_buffer(),
+        //     self.vm.ray_drawer.get_size_buffer(),
+        //     &self.vm.body_mp,
+        //     &self.id_v,
+        // )?;
 
-            // Draw ray tracing result to texture
+        {
+            let line_v = inner::gen_line_v(self.vm, &self.id_v);
+            if !line_v.is_empty() {
+                self.vm.ray_drawer.update_line_v(&self.vm.device, &line_v);
+
+                // Draw ray tracing result to texture
+                self.vm
+                    .ray_drawer
+                    .draw_ray_to_point_texture(&self.vm.device, &self.vm.queue);
+            }
+
+            // Let the points be drew to current surface.
             self.vm
-                .ray_drawer
-                .draw_ray_to_point_texture(&self.vm.device, &self.vm.queue);
+                .surface_drawer
+                .draw_point_to_surface(
+                    &self.vm.device,
+                    &self.vm.queue,
+                    &self.view,
+                    self.vm.ray_drawer.get_result_buffer(),
+                    self.vm.ray_drawer.get_size_buffer(),
+                )
+                .unwrap();
         }
-
-        // Let the points be drew to current surface.
-        self.vm
-            .surface_drawer
-            .draw_point_to_surface(
-                &self.vm.device,
-                &self.vm.queue,
-                &self.view,
-                self.vm.ray_drawer.get_result_buffer(),
-                self.vm.ray_drawer.get_size_buffer(),
-            )
-            .unwrap();
 
         // Let the watcher be drew to current surface.
         self.vm
@@ -297,12 +301,15 @@ impl<'a> RenderPass<'a> {
             .unwrap();
 
         self.output.present();
+
+        Ok(())
     }
 }
 
 pub struct VisionManager {
     pub ray_drawer: drawer::RayDrawer,
     pub light_drawer: drawer::WathcerDrawer,
+    pub three_drawer: drawer::ThreeDrawer,
     pub surface_drawer: drawer::SurfaceDrawer,
 
     pub surface: wgpu::Surface<'static>,
@@ -320,15 +327,17 @@ impl VisionManager {
         ray_drawer: drawer::RayDrawer,
         light_drawer: drawer::WathcerDrawer,
         surface_drawer: drawer::SurfaceDrawer,
-
         surface: wgpu::Surface<'static>,
         device: wgpu::Device,
         queue: wgpu::Queue,
         config: wgpu::SurfaceConfiguration,
     ) -> Self {
+        let three_drawer = drawer::ThreeDrawer::new(&device, config.format);
+
         Self {
             ray_drawer,
             light_drawer,
+            three_drawer,
             surface_drawer,
             device,
             queue,
@@ -372,6 +381,31 @@ impl VisionManager {
                                 is_visible: true,
                             }],
                             light_look: vec![],
+                            three_look: None,
+                        },
+                        life_step_op: None,
+                        matrix: Matrix3::identity(),
+                    },
+                );
+                Some(id)
+            }
+            "ball3" => {
+                log::debug!("create_element: create ball {id}");
+
+                let buffer = Arc::new(self.device.create_buffer_init(&BufferInitDescriptor {
+                    label: None,
+                    contents: bytemuck::cast_slice(&[0]),
+                    usage: BufferUsages::VERTEX,
+                }));
+
+                self.body_mp.insert(
+                    id,
+                    Body {
+                        class: format!("ball3"),
+                        look: BodyLook {
+                            ray_look: vec![],
+                            light_look: vec![],
+                            three_look: Some(ThreeLook::Body(buffer)),
                         },
                         life_step_op: None,
                         matrix: Matrix3::identity(),
@@ -395,6 +429,7 @@ impl VisionManager {
                                 is_visible: true,
                             }],
                             light_look: vec![],
+                            three_look: None,
                         },
                         life_step_op: None,
                         matrix: Matrix3::identity(),
@@ -427,6 +462,25 @@ impl VisionManager {
                 }
                 _ => (),
             }
+        }
+    }
+
+    /// called => the result = a new render pass
+    pub fn render_pass(&mut self, watcher: &Watcher) -> RenderPass {
+        self.ray_drawer.update_watcher(&self.device, watcher);
+
+        // Let the surface be drew.
+        let output = self.surface.get_current_texture().unwrap();
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let id_v = Vec::new();
+
+        RenderPass {
+            vm: self,
+            output,
+            view,
+            id_v,
         }
     }
 }

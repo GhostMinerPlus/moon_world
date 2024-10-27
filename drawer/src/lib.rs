@@ -1,12 +1,85 @@
+use std::sync::Arc;
+
+use nalgebra::{Matrix4, Vector4};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     BindGroupLayout, Buffer, BufferUsages, ComputePassDescriptor, ComputePipeline, Device, Queue,
-    RenderPipeline, SurfaceConfiguration, TextureView,
+    RenderPipeline, SurfaceConfiguration, Texture, TextureFormat, TextureView,
 };
 
-use crate::err;
+mod pipeline {
+    use wgpu::{
+        ComputePipeline, ComputePipelineDescriptor, Device, PipelineLayout, RenderPipeline,
+        ShaderModule, TextureFormat, VertexBufferLayout,
+    };
 
-use super::structs::{Line, LineIn, PointInput, Watcher};
+    pub fn build_render_pipe_line<'a>(
+        name: &str,
+        device: &Device,
+        render_pipeline_layout: &PipelineLayout,
+        shader: &ShaderModule,
+        buffer_layout_v: &[VertexBufferLayout<'a>],
+        format: TextureFormat,
+        topology: wgpu::PrimitiveTopology,
+    ) -> RenderPipeline {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some(name),
+            layout: Some(&render_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: shader,
+                entry_point: "vs_main",
+                buffers: buffer_layout_v,
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: shader,
+                entry_point: "fs_main",
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        })
+    }
+
+    pub fn build_compute_pipeline(
+        name: &str,
+        device: &Device,
+        pipeline_layout: &PipelineLayout,
+        shader: &ShaderModule,
+        entry_point: &str,
+    ) -> ComputePipeline {
+        device.create_compute_pipeline(&ComputePipelineDescriptor {
+            label: Some(name),
+            layout: Some(pipeline_layout),
+            module: shader,
+            entry_point,
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            cache: None,
+        })
+    }
+}
+
+pub mod structs;
+pub mod light_mapping;
+pub mod err;
+
+pub enum ThreeLook {
+    Body(Arc<wgpu::Buffer>),
+    Light(Light)
+}
+
+pub struct Light {
+    pub color: Vector4<f32>,
+    pub matrix: Matrix4<f32>,
+}
 
 pub struct RayDrawer {
     compute_bind_group_layout: BindGroupLayout,
@@ -189,7 +262,7 @@ impl RayDrawer {
             });
     }
 
-    pub fn update_line_v(&mut self, device: &Device, line_v: &[Line]) {
+    pub fn update_line_v(&mut self, device: &Device, line_v: &[structs::Line]) {
         self.line_v_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("LineV Buffer"),
             contents: &bytemuck::cast_slice(line_v),
@@ -197,7 +270,7 @@ impl RayDrawer {
         });
     }
 
-    pub fn update_watcher(&mut self, device: &Device, watcher: &Watcher) {
+    pub fn update_watcher(&mut self, device: &Device, watcher: &structs::Watcher) {
         self.watcher_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Watcher Buffer"),
             contents: &bytemuck::cast_slice(&[*watcher]),
@@ -255,7 +328,7 @@ impl SurfaceDrawer {
                 label: Some("Point Shader"),
                 source: wgpu::ShaderSource::Wgsl(include_str!("shader/point.wgsl").into()),
             }),
-            &[PointInput::desc()],
+            &[structs::PointInput::desc()],
             config.format,
             wgpu::PrimitiveTopology::TriangleList,
         );
@@ -314,22 +387,22 @@ impl SurfaceDrawer {
             let buffer = device.create_buffer_init(&BufferInitDescriptor {
                 label: None,
                 contents: bytemuck::cast_slice(&[
-                    PointInput {
+                    structs::PointInput {
                         position: [-1.0, -1.0],
                     },
-                    PointInput {
+                    structs::PointInput {
                         position: [1.0, -1.0],
                     },
-                    PointInput {
+                    structs::PointInput {
                         position: [1.0, 1.0],
                     },
-                    PointInput {
+                    structs::PointInput {
                         position: [-1.0, -1.0],
                     },
-                    PointInput {
+                    structs::PointInput {
                         position: [1.0, 1.0],
                     },
-                    PointInput {
+                    structs::PointInput {
                         position: [-1.0, 1.0],
                     },
                 ]),
@@ -377,6 +450,7 @@ impl WathcerDrawer {
             ],
             label: Some("bind_group0_layout"),
         });
+
         let line_render_pipeline = pipeline::build_render_pipe_line(
             "Line Pipeline",
             &device,
@@ -389,10 +463,11 @@ impl WathcerDrawer {
                 label: Some("Line Shader"),
                 source: wgpu::ShaderSource::Wgsl(include_str!("shader/line.wgsl").into()),
             }),
-            &[LineIn::desc()],
+            &[structs::LineIn::desc()],
             config.format,
             wgpu::PrimitiveTopology::LineList,
         );
+
         Self {
             line_render_pipeline,
             bind_group_layout,
@@ -407,7 +482,7 @@ impl WathcerDrawer {
         view: &TextureView,
         watcher_buffer: &Buffer,
         size_buffer: &Buffer,
-        line_v: &[LineIn],
+        line_v: &[structs::LineIn],
     ) -> err::Result<()> {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Render Encoder"),
@@ -463,74 +538,52 @@ impl WathcerDrawer {
     }
 }
 
-mod pipeline {
-    use wgpu::{
-        ComputePipeline, ComputePipelineDescriptor, Device, PipelineLayout, RenderPipeline,
-        ShaderModule, TextureFormat, VertexBufferLayout,
-    };
+pub struct ThreeDrawer {
+    light_mapping_builder: light_mapping::LightMappingBuilder,
+}
 
-    pub fn build_render_pipe_line<'a>(
-        name: &str,
-        device: &Device,
-        render_pipeline_layout: &PipelineLayout,
-        shader: &ShaderModule,
-        buffer_layout_v: &[VertexBufferLayout<'a>],
-        format: TextureFormat,
-        topology: wgpu::PrimitiveTopology,
-    ) -> RenderPipeline {
-        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some(name),
-            layout: Some(&render_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: shader,
-                entry_point: "vs_main",
-                buffers: buffer_layout_v,
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: shader,
-                entry_point: "fs_main",
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview: None,
-            cache: None,
-        })
+impl ThreeDrawer {
+    pub fn new(device: &Device, format: TextureFormat) -> Self {
+        let light_mapping_builder = light_mapping::LightMappingBuilder::new(device, format);
+
+        Self {
+            light_mapping_builder,
+        }
     }
 
-    pub fn build_compute_pipeline(
-        name: &str,
+    pub fn render(
+        &self,
         device: &Device,
-        pipeline_layout: &PipelineLayout,
-        shader: &ShaderModule,
-        entry_point: &str,
-    ) -> ComputePipeline {
-        device.create_compute_pipeline(&ComputePipelineDescriptor {
-            label: Some(name),
-            layout: Some(pipeline_layout),
-            module: shader,
-            entry_point,
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            cache: None,
-        })
+        queue: &Queue,
+        view: &TextureView,
+        watcher_buffer: &Buffer,
+        size_buffer: &Buffer,
+        body_v: Vec<&ThreeLook>,
+        id_v: &[u64],
+    ) -> err::Result<()> {
+        let mut body_buffer_v = vec![];
+        let mut light_v = vec![];
+
+        for body in body_v {
+            match body {
+                ThreeLook::Body(buffer) => body_buffer_v.push(buffer.clone()),
+                ThreeLook::Light(light) => light_v.push(light),
+            }
+        }
+
+        // mapping of light_v
+        let buffer_v = light_v
+            .iter()
+            .map(|light| {
+                self.light_mapping_builder.light_mapping(
+                    device,
+                    queue,
+                    light,
+                    &body_buffer_v,
+                )
+            })
+            .collect::<Vec<Texture>>();
+
+        todo!("draw")
     }
 }

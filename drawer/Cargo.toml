@@ -1,0 +1,16 @@
+[package]
+name = "drawer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+error-stack = "0.5"
+bytemuck = { version = "1.16", features = [ "derive" ] }
+log = "0.4"
+nalgebra = "0.33"
+wgpu = "22.1"
+winit = "0.30"
+
+[dev-dependencies]
+env_logger = "0.11"
+tokio = { version = "1.40", features = ["full"] }

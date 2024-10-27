@@ -8,7 +8,7 @@ use edge_lib::util::{
     Path,
 };
 use error_stack::ResultExt;
-use moon_world::{err, util::engine::EngineBuilder};
+use moon_world::{err, EngineBuilder};
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -134,5 +134,6 @@ fn main() {
         env_logger::Env::default().default_filter_or("warn,demo=debug,world2=debug"),
     )
     .init();
+
     Application::new().run().unwrap()
 }
