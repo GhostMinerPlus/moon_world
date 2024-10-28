@@ -75,8 +75,8 @@ impl LightMappingBuilder {
         let texture = device.create_texture(&TextureDescriptor {
             label: None,
             size: Extent3d {
-                width: 64,
-                height: 64,
+                width: 1024,
+                height: 1024,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -188,18 +188,18 @@ mod tests {
                 .await
                 .unwrap();
 
-            let lm_builder = LightMappingBuilder::new(&device, TextureFormat::Rgba8UnormSrgb);
+            let lm_builder = LightMappingBuilder::new(&device, TextureFormat::Rgba8Unorm);
             let body_v = vec![Arc::new(device.create_buffer_init(&BufferInitDescriptor {
                 label: None,
                 contents: bytemuck::cast_slice(&[
                     Point3Input {
-                        position: [0.0, 0.0, 0.0, 1.0],
+                        position: [0.0, 0.0, 0.5, 1.0],
                     },
                     Point3Input {
-                        position: [1.0, 0.0, 0.0, 1.0],
+                        position: [1.0, 0.0, 0.5, 1.0],
                     },
                     Point3Input {
-                        position: [0.0, 1.0, 0.0, 1.0],
+                        position: [0.0, 1.0, 0.5, 1.0],
                     },
                 ]),
                 usage: BufferUsages::VERTEX,
@@ -249,13 +249,13 @@ mod tests {
 
             let buf_view = buffer.slice(..).get_mapped_range();
 
-            let b = buf_view[0];
+            let b = buf_view[(511 * texture.width() as usize + 512) * 4];
 
             drop(buf_view);
 
             buffer.unmap();
 
-            assert_ne!(b, 1);
+            assert_ne!(b, 0);
         });
     }
 }
