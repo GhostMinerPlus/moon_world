@@ -1,8 +1,7 @@
 //! Help the crate be a video provider, a event handler or a shape builder.
 
-use std::sync::Arc;
-
-use nalgebra::{Matrix3, Matrix4, Vector3, Vector4};
+use drawer::ThreeLook;
+use nalgebra::{Matrix3, Vector3};
 use rapier2d::prelude::{Collider, GenericJoint};
 
 pub mod shape;
@@ -11,17 +10,6 @@ pub struct BodyLook {
     pub ray_look: Vec<RayLook>,
     pub light_look: Vec<LightLook>,
     pub three_look: Option<ThreeLook>,
-}
-
-/// gotten with body => the result = buffer of body
-pub enum ThreeLook {
-    Body(Arc<wgpu::Buffer>),
-    Light(Light)
-}
-
-pub struct Light {
-    pub color: Vector4<f32>,
-    pub matrix: Matrix4<f32>,
 }
 
 pub struct LightLook {

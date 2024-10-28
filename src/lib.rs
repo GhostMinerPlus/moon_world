@@ -8,7 +8,6 @@ use edge_lib::util::{
 use error_stack::ResultExt;
 use nalgebra::{Matrix3, Vector2, Vector3};
 use rapier2d::prelude::{Collider, GenericJoint, IntegrationParameters, RigidBodyHandle};
-use res::RenderPass;
 use view_manager::util::{AsViewManager, VNode, ViewProps};
 
 use std::{collections::HashMap, future::Future, pin::Pin};

@@ -3,8 +3,12 @@ use std::{
     sync::{mpsc::channel, Arc},
 };
 
-use drawer::structs::{self, Watcher};
-use nalgebra::{vector, Matrix3, Vector3};
+use drawer::{
+    structs::{self, Watcher},
+    ThreeLook,
+};
+use error_stack::ResultExt;
+use nalgebra::{vector, Matrix3, Matrix4, Vector3};
 use rapier2d::prelude::{
     ColliderBuilder, IntegrationParameters, RigidBodyBuilder, RigidBodyHandle,
 };
@@ -15,10 +19,7 @@ use wgpu::{
     BufferUsages, SurfaceTexture, TextureView,
 };
 
-use crate::{
-    err,
-    util::{shape::Shape, ThreeLook},
-};
+use crate::{err, util::shape::Shape};
 
 use super::{
     physics,
@@ -253,15 +254,20 @@ impl<'a> RenderPass<'a> {
     }
 
     pub fn render(self) -> err::Result<()> {
-        // self.vm.three_drawer.render(
-        //     &self.vm.device,
-        //     &self.vm.queue,
-        //     &self.view,
-        //     self.vm.ray_drawer.get_watcher_buffer(),
-        //     self.vm.ray_drawer.get_size_buffer(),
-        //     &self.vm.body_mp,
-        //     &self.id_v,
-        // )?;
+        self.vm
+            .three_drawer
+            .render(
+                &self.vm.device,
+                &self.vm.queue,
+                &self.view,
+                self.id_v
+                    .iter()
+                    .map(|id| self.vm.body_mp.get(id).unwrap().look.three_look.as_ref())
+                    .filter(|op| op.is_some())
+                    .map(|op| op.unwrap())
+                    .collect(),
+            )
+            .change_context(err::Error::Other)?;
 
         {
             let line_v = inner::gen_line_v(self.vm, &self.id_v);
@@ -332,7 +338,7 @@ impl VisionManager {
         queue: wgpu::Queue,
         config: wgpu::SurfaceConfiguration,
     ) -> Self {
-        let three_drawer = drawer::ThreeDrawer::new(&device, config.format);
+        let three_drawer = drawer::ThreeDrawer::new(&device, config.format, Matrix4::identity());
 
         Self {
             ray_drawer,

@@ -3,13 +3,13 @@ use std::{
     time::Duration,
 };
 
-use drawer::{light_mapping::LightMappingBuilder, structs::Point3Input, Light};
+use drawer::{structs::Point3Input, Light, ThreeDrawer, ThreeLook};
 use image::Rgba;
 use nalgebra::{vector, Matrix4};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    BufferDescriptor, BufferUsages, Device, ImageCopyBuffer, ImageDataLayout, Queue, Texture,
-    TextureFormat,
+    BufferDescriptor, BufferUsages, Device, Extent3d, ImageCopyBuffer, ImageDataLayout, Queue,
+    Texture, TextureDescriptor, TextureFormat, TextureUsages, TextureViewDescriptor,
 };
 
 fn save_texture(
@@ -79,15 +79,11 @@ fn save_texture(
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
 
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
-    let light = Light {
-        color: vector![1.0, 1.0, 1.0, 1.0],
-        matrix: Matrix4::identity(),
-    };
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap();
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
 
     rt.block_on(async move {
         let adapter = instance
@@ -114,59 +110,74 @@ fn main() {
             .await
             .unwrap();
 
-        let lm_builder = LightMappingBuilder::new(&device, TextureFormat::Rgba8Unorm);
-        let body_v = vec![Arc::new(device.create_buffer_init(&BufferInitDescriptor {
+        let texture = device.create_texture(&TextureDescriptor {
             label: None,
-            contents: bytemuck::cast_slice(&[
-                Point3Input {
-                    position: [0.0, 0.0, 0.5, 1.0],
-                },
-                Point3Input {
-                    position: [1.0, 0.0, 0.5, 1.0],
-                },
-                Point3Input {
-                    position: [0.0, 1.0, 0.5, 1.0],
-                },
-                Point3Input {
-                    position: [0.0, 0.0, 0.2, 1.0],
-                },
-                Point3Input {
-                    position: [0.5, 0.0, 0.2, 1.0],
-                },
-                Point3Input {
-                    position: [0.0, 0.5, 0.2, 1.0],
-                },
-            ]),
-            usage: BufferUsages::VERTEX,
-        }))];
+            size: Extent3d {
+                width: 1024,
+                height: 1024,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: TextureFormat::Rgba8Unorm,
+            usage: TextureUsages::RENDER_ATTACHMENT
+                | TextureUsages::COPY_SRC
+                | TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let look_v = vec![
+            ThreeLook::Light(Light {
+                color: vector![1.0, 1.0, 1.0, 1.0],
+                matrix: Matrix4::identity(),
+            }),
+            ThreeLook::Body(Arc::new(device.create_buffer_init(&BufferInitDescriptor {
+                label: None,
+                contents: bytemuck::cast_slice(&[
+                    Point3Input {
+                        position: [0.0, 0.0, -10.0, 1.0],
+                    },
+                    Point3Input {
+                        position: [1.0, 0.0, -10.0, 1.0],
+                    },
+                    Point3Input {
+                        position: [0.0, 1.0, -10.0, 1.0],
+                    },
+                    Point3Input {
+                        position: [0.0, 0.0, -5.0, 1.0],
+                    },
+                    Point3Input {
+                        position: [-0.5, 0.0, -5.0, 1.0],
+                    },
+                    Point3Input {
+                        position: [0.0, -0.5, -5.0, 1.0],
+                    },
+                ]),
+                usage: BufferUsages::VERTEX,
+            }))),
+        ];
+        let three_drawer = ThreeDrawer::new(
+            &device,
+            wgpu::TextureFormat::Rgba8Unorm,
+            Matrix4::new_perspective(1.0, 45.0, 0.1, 500.0),
+        );
 
-        let texture = lm_builder.light_mapping(&device, &queue, &light, &body_v);
-
-        save_texture(
+        let _ = three_drawer.render(
             &device,
             &queue,
-            &texture,
-            "mapping.png",
-            |c, r, buf_view| {
-                let offset = ((r * texture.width() + c) * 4) as usize;
-
-                let depth = u32::from_be_bytes([
-                    buf_view[offset],
-                    buf_view[offset + 1],
-                    buf_view[offset + 2],
-                    buf_view[offset + 3],
-                ]) as f32
-                    / (256.0 * 256.0 * 256.0 * 256.0);
-
-                let lightness = if depth <= 0.0 {
-                    0
-                } else {
-                    log::debug!("depth = {depth}");
-                    ((1.0 - depth) * 256.0) as u8
-                };
-
-                image::Rgba([lightness, lightness, lightness, lightness])
-            },
+            &texture.create_view(&TextureViewDescriptor::default()),
+            look_v.iter().collect(),
         );
-    });
+
+        save_texture(&device, &queue, &texture, "three.png", |c, r, buf_view| {
+            let offset = ((r * texture.width() + c) * 4) as usize;
+
+            image::Rgba([
+                buf_view[offset],
+                buf_view[offset + 1],
+                buf_view[offset + 2],
+                buf_view[offset + 3],
+            ])
+        });
+    })
 }

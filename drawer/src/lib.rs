@@ -41,7 +41,10 @@ mod pipeline {
                 })],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
-            primitive: wgpu::PrimitiveState::default(),
+            primitive: wgpu::PrimitiveState {
+                topology,
+                ..Default::default()
+            },
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
@@ -66,14 +69,15 @@ mod pipeline {
         })
     }
 }
+mod body_render;
 
-pub mod structs;
-pub mod light_mapping;
 pub mod err;
+pub mod light_mapping;
+pub mod structs;
 
 pub enum ThreeLook {
     Body(Arc<wgpu::Buffer>),
-    Light(Light)
+    Light(Light),
 }
 
 pub struct Light {
@@ -540,14 +544,21 @@ impl WathcerDrawer {
 
 pub struct ThreeDrawer {
     light_mapping_builder: light_mapping::LightMappingBuilder,
+    body_renderer: body_render::BodyRenderer,
+    view_m: Matrix4<f32>,
+    proj_m: Matrix4<f32>,
 }
 
 impl ThreeDrawer {
-    pub fn new(device: &Device, format: TextureFormat) -> Self {
+    pub fn new(device: &Device, format: TextureFormat, proj_m: Matrix4<f32>) -> Self {
         let light_mapping_builder = light_mapping::LightMappingBuilder::new(device, format);
+        let body_renderer = body_render::BodyRenderer::new(device, format);
 
         Self {
             light_mapping_builder,
+            body_renderer,
+            view_m: Matrix4::identity(),
+            proj_m,
         }
     }
 
@@ -556,34 +567,38 @@ impl ThreeDrawer {
         device: &Device,
         queue: &Queue,
         view: &TextureView,
-        watcher_buffer: &Buffer,
-        size_buffer: &Buffer,
-        body_v: Vec<&ThreeLook>,
-        id_v: &[u64],
+        look_v: Vec<&ThreeLook>,
     ) -> err::Result<()> {
         let mut body_buffer_v = vec![];
         let mut light_v = vec![];
 
-        for body in body_v {
-            match body {
+        for look in look_v {
+            match look {
                 ThreeLook::Body(buffer) => body_buffer_v.push(buffer.clone()),
                 ThreeLook::Light(light) => light_v.push(light),
             }
         }
 
         // mapping of light_v
-        let buffer_v = light_v
+        let light_texture_v = light_v
             .iter()
             .map(|light| {
-                self.light_mapping_builder.light_mapping(
-                    device,
-                    queue,
-                    light,
-                    &body_buffer_v,
+                (
+                    *light,
+                    self.light_mapping_builder
+                        .light_mapping(device, queue, light, &body_buffer_v),
                 )
             })
-            .collect::<Vec<Texture>>();
+            .collect::<Vec<(&Light, Texture)>>();
 
-        todo!("draw")
+        self.body_renderer.body_render(
+            device,
+            queue,
+            view,
+            light_texture_v,
+            &body_buffer_v,
+            &self.view_m,
+            &self.proj_m,
+        )
     }
 }
