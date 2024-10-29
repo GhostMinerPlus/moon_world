@@ -1,16 +1,21 @@
-use std::sync::Arc;
+use std::{
+    sync::{mpsc::channel, Arc},
+    time::Duration,
+};
 
+use image::Rgba;
 use nalgebra::{Matrix4, Vector4};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    BindGroupLayout, Buffer, BufferUsages, ComputePassDescriptor, ComputePipeline, Device, Queue,
-    RenderPipeline, SurfaceConfiguration, Texture, TextureFormat, TextureView,
+    BindGroupLayout, Buffer, BufferDescriptor, BufferUsages, ComputePassDescriptor,
+    ComputePipeline, Device, ImageCopyBuffer, ImageDataLayout, Queue, RenderPipeline,
+    SurfaceConfiguration, Texture, TextureFormat, TextureView,
 };
 
 mod pipeline {
     use wgpu::{
-        ComputePipeline, ComputePipelineDescriptor, Device, PipelineLayout, RenderPipeline,
-        ShaderModule, TextureFormat, VertexBufferLayout,
+        ComputePipeline, ComputePipelineDescriptor, DepthStencilState, Device, PipelineLayout,
+        RenderPipeline, ShaderModule, TextureFormat, VertexBufferLayout,
     };
 
     pub fn build_render_pipe_line<'a>(
@@ -21,6 +26,7 @@ mod pipeline {
         buffer_layout_v: &[VertexBufferLayout<'a>],
         format: TextureFormat,
         topology: wgpu::PrimitiveTopology,
+        depth_stencil_op: Option<DepthStencilState>,
     ) -> RenderPipeline {
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some(name),
@@ -45,7 +51,7 @@ mod pipeline {
                 topology,
                 ..Default::default()
             },
-            depth_stencil: None,
+            depth_stencil: depth_stencil_op,
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
             cache: None,
@@ -70,6 +76,7 @@ mod pipeline {
     }
 }
 mod body_render;
+mod view_renderer;
 
 pub mod err;
 pub mod light_mapping;
@@ -335,6 +342,7 @@ impl SurfaceDrawer {
             &[structs::PointInput::desc()],
             config.format,
             wgpu::PrimitiveTopology::TriangleList,
+            None,
         );
         Self {
             triangle_render_pipeline,
@@ -470,6 +478,7 @@ impl WathcerDrawer {
             &[structs::LineIn::desc()],
             config.format,
             wgpu::PrimitiveTopology::LineList,
+            None,
         );
 
         Self {
@@ -547,18 +556,21 @@ pub struct ThreeDrawer {
     body_renderer: body_render::BodyRenderer,
     view_m: Matrix4<f32>,
     proj_m: Matrix4<f32>,
+    view_renderer: view_renderer::ViewRenderer,
 }
 
 impl ThreeDrawer {
     pub fn new(device: &Device, format: TextureFormat, proj_m: Matrix4<f32>) -> Self {
         let light_mapping_builder = light_mapping::LightMappingBuilder::new(device, format);
         let body_renderer = body_render::BodyRenderer::new(device, format);
+        let view_renderer = view_renderer::ViewRenderer::new(device, format);
 
         Self {
             light_mapping_builder,
             body_renderer,
             view_m: Matrix4::identity(),
             proj_m,
+            view_renderer,
         }
     }
 
@@ -566,7 +578,7 @@ impl ThreeDrawer {
         &self,
         device: &Device,
         queue: &Queue,
-        view: &TextureView,
+        surface: &TextureView,
         look_v: Vec<&ThreeLook>,
     ) -> err::Result<()> {
         let mut body_buffer_v = vec![];
@@ -585,20 +597,96 @@ impl ThreeDrawer {
             .map(|light| {
                 (
                     *light,
-                    self.light_mapping_builder
-                        .light_mapping(device, queue, light, &body_buffer_v),
+                    self.light_mapping_builder.light_mapping(
+                        device,
+                        queue,
+                        &light.matrix,
+                        &body_buffer_v,
+                    ),
                 )
             })
             .collect::<Vec<(&Light, Texture)>>();
+        // color and depth of view
+        let (view_texture, view_depth_texture) = {
+            let mvp = self.view_m * self.proj_m;
+
+            self.view_renderer
+                .view_renderer(device, queue, &mvp, &body_buffer_v)
+        };
 
         self.body_renderer.body_render(
             device,
             queue,
-            view,
+            surface,
+            view_texture,
+            view_depth_texture,
             light_texture_v,
-            &body_buffer_v,
             &self.view_m,
             &self.proj_m,
         )
     }
+}
+
+pub fn save_texture(
+    device: &Device,
+    queue: &Queue,
+    texture: &Texture,
+    path: &str,
+    f: impl Fn(u32, u32, &[u8]) -> Rgba<u8>,
+) {
+    let mut encoder =
+        device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+    let (tx, rx) = channel::<bool>();
+
+    let buffer = device.create_buffer(&BufferDescriptor {
+        label: None,
+        size: (texture.width() * texture.height() * 4) as u64,
+        usage: BufferUsages::COPY_DST | BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+    encoder.copy_texture_to_buffer(
+        texture.as_image_copy(),
+        ImageCopyBuffer {
+            buffer: &buffer,
+            layout: ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(texture.width() * 4),
+                rows_per_image: None,
+            },
+        },
+        texture.size(),
+    );
+
+    queue.submit(std::iter::once(encoder.finish()));
+
+    buffer.slice(..).map_async(wgpu::MapMode::Read, move |rs| {
+        if let Err(e) = rs {
+            log::error!("{e:?}");
+            let _ = tx.send(false);
+        } else {
+            let _ = tx.send(true);
+        }
+    });
+
+    device.poll(wgpu::MaintainBase::Wait).panic_on_timeout();
+
+    if !rx.recv_timeout(Duration::from_secs(3)).unwrap() {
+        panic!("texture data is invalid!");
+    }
+
+    log::info!("mapped");
+    {
+        let buf_view = buffer.slice(..).get_mapped_range();
+
+        let mut img_buf: image::ImageBuffer<image::Rgba<u8>, Vec<u8>> =
+            image::ImageBuffer::new(texture.width(), texture.height());
+
+        for (c, r, p) in img_buf.enumerate_pixels_mut() {
+            *p = f(c, r, &buf_view);
+        }
+
+        let _ = img_buf.save(path);
+    }
+
+    buffer.unmap();
 }

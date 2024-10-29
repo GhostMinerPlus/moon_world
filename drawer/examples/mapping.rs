@@ -1,80 +1,11 @@
-use std::{
-    sync::{mpsc::channel, Arc},
-    time::Duration,
-};
+use std::sync::Arc;
 
-use drawer::{light_mapping::LightMappingBuilder, structs::Point3Input, Light};
-use image::Rgba;
+use drawer::{light_mapping::LightMappingBuilder, save_texture, structs::Point3Input, Light};
 use nalgebra::{vector, Matrix4};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    BufferDescriptor, BufferUsages, Device, ImageCopyBuffer, ImageDataLayout, Queue, Texture,
-    TextureFormat,
+    BufferUsages, TextureFormat,
 };
-
-fn save_texture(
-    device: &Device,
-    queue: &Queue,
-    texture: &Texture,
-    path: &str,
-    f: impl Fn(u32, u32, &[u8]) -> Rgba<u8>,
-) {
-    let mut encoder =
-        device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-    let (tx, rx) = channel::<bool>();
-
-    let buffer = device.create_buffer(&BufferDescriptor {
-        label: None,
-        size: (texture.width() * texture.height() * 4) as u64,
-        usage: BufferUsages::COPY_DST | BufferUsages::MAP_READ,
-        mapped_at_creation: false,
-    });
-    encoder.copy_texture_to_buffer(
-        texture.as_image_copy(),
-        ImageCopyBuffer {
-            buffer: &buffer,
-            layout: ImageDataLayout {
-                offset: 0,
-                bytes_per_row: Some(texture.width() * 4),
-                rows_per_image: None,
-            },
-        },
-        texture.size(),
-    );
-
-    queue.submit(std::iter::once(encoder.finish()));
-
-    buffer.slice(..).map_async(wgpu::MapMode::Read, move |rs| {
-        if let Err(e) = rs {
-            log::error!("{e:?}");
-            let _ = tx.send(false);
-        } else {
-            let _ = tx.send(true);
-        }
-    });
-
-    device.poll(wgpu::MaintainBase::Wait).panic_on_timeout();
-
-    if !rx.recv_timeout(Duration::from_secs(3)).unwrap() {
-        panic!("texture data is invalid!");
-    }
-
-    log::info!("mapped");
-    {
-        let buf_view = buffer.slice(..).get_mapped_range();
-
-        let mut img_buf: image::ImageBuffer<image::Rgba<u8>, Vec<u8>> =
-            image::ImageBuffer::new(texture.width(), texture.height());
-
-        for (c, r, p) in img_buf.enumerate_pixels_mut() {
-            *p = f(c, r, &buf_view);
-        }
-
-        let _ = img_buf.save(path);
-    }
-
-    buffer.unmap();
-}
 
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
@@ -120,27 +51,33 @@ fn main() {
             contents: bytemuck::cast_slice(&[
                 Point3Input {
                     position: [0.0, 0.0, 0.5, 1.0],
+                    color: [1.0, 1.0, 1.0, 1.0],
                 },
                 Point3Input {
                     position: [1.0, 0.0, 0.5, 1.0],
+                    color: [1.0, 1.0, 1.0, 1.0],
                 },
                 Point3Input {
                     position: [0.0, 1.0, 0.5, 1.0],
+                    color: [1.0, 1.0, 1.0, 1.0],
                 },
                 Point3Input {
                     position: [0.0, 0.0, 0.2, 1.0],
+                    color: [1.0, 1.0, 1.0, 1.0],
                 },
                 Point3Input {
                     position: [0.5, 0.0, 0.2, 1.0],
+                    color: [1.0, 1.0, 1.0, 1.0],
                 },
                 Point3Input {
                     position: [0.0, 0.5, 0.2, 1.0],
+                    color: [1.0, 1.0, 1.0, 1.0],
                 },
             ]),
             usage: BufferUsages::VERTEX,
         }))];
 
-        let texture = lm_builder.light_mapping(&device, &queue, &light, &body_v);
+        let texture = lm_builder.light_mapping(&device, &queue, &light.matrix, &body_v);
 
         save_texture(
             &device,
@@ -161,7 +98,6 @@ fn main() {
                 let lightness = if depth <= 0.0 {
                     0
                 } else {
-                    log::debug!("depth = {depth}");
                     ((1.0 - depth) * 256.0) as u8
                 };
 

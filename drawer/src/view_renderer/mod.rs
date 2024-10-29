@@ -3,21 +3,21 @@ use std::sync::Arc;
 use nalgebra::Matrix4;
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    BindGroupLayout, Buffer, BufferUsages, Device, Extent3d, Queue, RenderPipeline, Texture,
+    BindGroupLayout, Buffer, BufferUsages, DepthBiasState, DepthStencilState, Device, Extent3d,
+    Operations, Queue, RenderPassDepthStencilAttachment, RenderPipeline, StencilState, Texture,
     TextureDescriptor, TextureFormat, TextureUsages,
 };
 
-use crate::structs::Point3Input;
+use crate::{pipeline, structs::Point3Input};
 
-use super::pipeline;
-
-pub struct LightMappingBuilder {
+pub struct ViewRenderer {
     render_pipeline: RenderPipeline,
     bind_group_layout: BindGroupLayout,
-    format: TextureFormat,
+    view_texture: Texture,
+    view_depth_texture: Texture,
 }
 
-impl LightMappingBuilder {
+impl ViewRenderer {
     pub fn new(device: &Device, format: TextureFormat) -> Self {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[wgpu::BindGroupLayoutEntry {
@@ -34,47 +34,29 @@ impl LightMappingBuilder {
         });
 
         let render_pipeline = pipeline::build_render_pipe_line(
-            "Light Mapping Pipeline",
+            "View Render Pipeline",
             &device,
             &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Light Mapping Render Pipeline Layout"),
+                label: Some("View Render Render Pipeline Layout"),
                 bind_group_layouts: &[&bind_group_layout],
                 push_constant_ranges: &[],
             }),
             &device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("Light Mapping Shader"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("shader/light_mapping.wgsl").into()),
+                label: Some("View Render Shader"),
+                source: wgpu::ShaderSource::Wgsl(include_str!("shader/view_renderer.wgsl").into()),
             }),
-            &[Point3Input::pos_only_desc()],
+            &[Point3Input::desc()],
             format,
             wgpu::PrimitiveTopology::TriangleList,
-            None,
+            Some(DepthStencilState {
+                format: TextureFormat::Depth32Float,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil: StencilState::default(),
+                bias: DepthBiasState::default(),
+            }),
         );
-
-        Self {
-            render_pipeline,
-            bind_group_layout,
-            format,
-        }
-    }
-
-    pub fn light_mapping(
-        &self,
-        device: &Device,
-        queue: &Queue,
-        light: &Matrix4<f32>,
-        body_v: &[Arc<Buffer>],
-    ) -> Texture {
-        let light_buf = device.create_buffer_init(&BufferInitDescriptor {
-            label: None,
-            contents: bytemuck::cast_slice(light.as_slice()),
-            usage: BufferUsages::UNIFORM,
-        });
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Render Encoder"),
-        });
-
-        let texture = device.create_texture(&TextureDescriptor {
+        let view_texture = device.create_texture(&TextureDescriptor {
             label: None,
             size: Extent3d {
                 width: 1024,
@@ -84,27 +66,75 @@ impl LightMappingBuilder {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: self.format,
-            usage: TextureUsages::RENDER_ATTACHMENT
-                | TextureUsages::COPY_SRC
-                | TextureUsages::TEXTURE_BINDING,
+            format,
+            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let view_depth_texture = device.create_texture(&TextureDescriptor {
+            label: None,
+            size: Extent3d {
+                width: 1024,
+                height: 1024,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: TextureFormat::Depth32Float,
+            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::RENDER_ATTACHMENT,
             view_formats: &[],
         });
 
+        Self {
+            render_pipeline,
+            bind_group_layout,
+            view_texture,
+            view_depth_texture,
+        }
+    }
+
+    pub fn view_renderer(
+        &self,
+        device: &Device,
+        queue: &Queue,
+        mvp: &Matrix4<f32>,
+        body_v: &[Arc<Buffer>],
+    ) -> (&Texture, &Texture) {
+        let mvp_buf = device.create_buffer_init(&BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(mvp.as_slice()),
+            usage: BufferUsages::UNIFORM,
+        });
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Render Encoder"),
+        });
+
         {
-            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+            let view_texture_view = self
+                .view_texture
+                .create_view(&wgpu::TextureViewDescriptor::default());
+            let view_depth_texture_view = self
+                .view_depth_texture
+                .create_view(&wgpu::TextureViewDescriptor::default());
 
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
+                    view: &view_texture_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Load,
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
+                    view: &view_depth_texture_view,
+                    depth_ops: Some(Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
@@ -116,9 +146,9 @@ impl LightMappingBuilder {
                     layout: &self.bind_group_layout,
                     entries: &[wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: light_buf.as_entire_binding(),
+                        resource: mvp_buf.as_entire_binding(),
                     }],
-                    label: Some("bind_group0"),
+                    label: None,
                 }),
                 &[],
             );
@@ -134,18 +164,20 @@ impl LightMappingBuilder {
 
         queue.submit(std::iter::once(encoder.finish()));
 
-        texture
+        (&self.view_texture, &self.view_depth_texture)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{sync::mpsc::channel, time::Duration};
+    use std::sync::Arc;
 
-    use nalgebra::{vector, Matrix4};
-    use wgpu::{BufferDescriptor, ImageCopyBuffer, ImageDataLayout};
-
-    use crate::Light;
+    use crate::structs::Point3Input;
+    use nalgebra::Matrix4;
+    use wgpu::{
+        util::{BufferInitDescriptor, DeviceExt},
+        BufferUsages, TextureFormat,
+    };
 
     use super::*;
 
@@ -156,16 +188,11 @@ mod tests {
                 .is_test(true)
                 .try_init();
 
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
-        let light = Light {
-            color: vector![1.0, 1.0, 1.0, 1.0],
-            matrix: Matrix4::identity(),
-        };
-        let (tx, rx) = channel::<bool>();
         let rt = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
             .unwrap();
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
 
         rt.block_on(async move {
             let adapter = instance
@@ -192,77 +219,44 @@ mod tests {
                 .await
                 .unwrap();
 
-            let lm_builder = LightMappingBuilder::new(&device, TextureFormat::Rgba8Unorm);
-            let body_v = vec![Arc::new(device.create_buffer_init(&BufferInitDescriptor {
+            let renderer = ViewRenderer::new(&device, TextureFormat::Rgba8Unorm);
+            let look_v = vec![Arc::new(device.create_buffer_init(&BufferInitDescriptor {
                 label: None,
                 contents: bytemuck::cast_slice(&[
                     Point3Input {
-                        position: [0.0, 0.0, 0.5, 1.0],
+                        position: [0.0, 0.0, -10.0, 1.0],
                         color: [1.0, 1.0, 1.0, 1.0],
                     },
                     Point3Input {
-                        position: [1.0, 0.0, 0.5, 1.0],
+                        position: [1.0, 0.0, -10.0, 1.0],
                         color: [1.0, 1.0, 1.0, 1.0],
                     },
                     Point3Input {
-                        position: [0.0, 1.0, 0.5, 1.0],
+                        position: [0.0, 1.0, -10.0, 1.0],
+                        color: [1.0, 1.0, 1.0, 1.0],
+                    },
+                    Point3Input {
+                        position: [0.0, 0.0, -5.0, 1.0],
+                        color: [1.0, 1.0, 1.0, 1.0],
+                    },
+                    Point3Input {
+                        position: [-0.5, 0.0, -5.0, 1.0],
+                        color: [1.0, 1.0, 1.0, 1.0],
+                    },
+                    Point3Input {
+                        position: [0.0, -0.5, -5.0, 1.0],
                         color: [1.0, 1.0, 1.0, 1.0],
                     },
                 ]),
                 usage: BufferUsages::VERTEX,
             }))];
-            let mut encoder =
-                device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-            let texture = lm_builder.light_mapping(&device, &queue, &light.matrix, &body_v);
-
-            let buffer = device.create_buffer(&BufferDescriptor {
-                label: None,
-                size: (texture.width() * texture.height() * 4) as u64,
-                usage: BufferUsages::COPY_DST | BufferUsages::MAP_READ,
-                mapped_at_creation: false,
-            });
-            encoder.copy_texture_to_buffer(
-                texture.as_image_copy(),
-                ImageCopyBuffer {
-                    buffer: &buffer,
-                    layout: ImageDataLayout {
-                        offset: 0,
-                        bytes_per_row: Some(texture.width() * 4),
-                        rows_per_image: None,
-                    },
-                },
-                texture.size(),
+            renderer.view_renderer(
+                &device,
+                &queue,
+                &Matrix4::new_perspective(1.0, 45.0, 0.1, 500.0),
+                &look_v,
             );
-
-            queue.submit(std::iter::once(encoder.finish()));
-
-            buffer.slice(..).map_async(wgpu::MapMode::Read, move |rs| {
-                if let Err(e) = rs {
-                    log::error!("{e:?}");
-                    let _ = tx.send(false);
-                } else {
-                    let _ = tx.send(true);
-                }
-            });
-
-            device.poll(wgpu::MaintainBase::Wait).panic_on_timeout();
-
-            if !rx.recv_timeout(Duration::from_secs(3)).unwrap() {
-                panic!("texture data is invalid!");
-            }
-
-            log::info!("mapped");
-
-            let buf_view = buffer.slice(..).get_mapped_range();
-
-            let b = buf_view[(511 * texture.width() as usize + 512) * 4];
-
-            drop(buf_view);
-
-            buffer.unmap();
-
-            assert_ne!(b, 0);
-        });
+        })
     }
 }
