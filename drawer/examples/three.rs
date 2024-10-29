@@ -30,7 +30,7 @@ fn main() {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     required_features: wgpu::Features::MAPPABLE_PRIMARY_BUFFERS
-                        | wgpu::Features::TEXTURE_BINDING_ARRAY,
+                        | wgpu::Features::VERTEX_WRITABLE_STORAGE,
                     // WebGL doesn't support all of wgpu's features, so if
                     // we're building for the web we'll have to disable some.
                     required_limits: wgpu::Limits::default(),
@@ -73,26 +73,32 @@ fn main() {
                     Point3Input {
                         position: [0.0, 0.0, -10.0, 1.0],
                         color: [1.0, 1.0, 1.0, 1.0],
+                        noraml: [0.0, 0.0, 1.0, 0.0]
                     },
                     Point3Input {
                         position: [1.0, 0.0, -10.0, 1.0],
                         color: [1.0, 1.0, 1.0, 1.0],
+                        noraml: [0.0, 0.0, 1.0, 0.0]
                     },
                     Point3Input {
                         position: [0.0, 1.0, -10.0, 1.0],
                         color: [1.0, 1.0, 1.0, 1.0],
+                        noraml: [0.0, 0.0, 1.0, 0.0]
                     },
                     Point3Input {
                         position: [0.0, 0.0, -5.0, 1.0],
                         color: [1.0, 1.0, 1.0, 1.0],
+                        noraml: [0.0, 0.0, 1.0, 0.0]
                     },
                     Point3Input {
                         position: [-0.5, 0.0, -5.0, 1.0],
                         color: [1.0, 1.0, 1.0, 1.0],
+                        noraml: [0.0, 0.0, 1.0, 0.0]
                     },
                     Point3Input {
                         position: [0.0, -0.5, -5.0, 1.0],
                         color: [1.0, 1.0, 1.0, 1.0],
+                        noraml: [0.0, 0.0, 1.0, 0.0]
                     },
                 ]),
                 usage: BufferUsages::VERTEX,

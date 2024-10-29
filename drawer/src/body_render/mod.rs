@@ -24,6 +24,7 @@ mod inner {
         light_buf: &Buffer,
         view_texture: &TextureView,
         view_depth_texture: &TextureView,
+        view_normal_texture: &TextureView,
         light_texture: &TextureView,
     ) {
         let body = device.create_buffer_init(&BufferInitDescriptor {
@@ -32,26 +33,32 @@ mod inner {
                 Point3Input {
                     position: [-1.0, 1.0, 0.0, 1.0],
                     color: [1.0, 1.0, 1.0, 1.0],
+                    noraml: [0.0, 0.0, 1.0, 0.0]
                 },
                 Point3Input {
                     position: [-1.0, -1.0, 0.0, 1.0],
                     color: [1.0, 1.0, 1.0, 1.0],
+                    noraml: [0.0, 0.0, 1.0, 0.0]
                 },
                 Point3Input {
                     position: [1.0, -1.0, 0.0, 1.0],
                     color: [1.0, 1.0, 1.0, 1.0],
+                    noraml: [0.0, 0.0, 1.0, 0.0]
                 },
                 Point3Input {
                     position: [-1.0, 1.0, 0.0, 1.0],
                     color: [1.0, 1.0, 1.0, 1.0],
+                    noraml: [0.0, 0.0, 1.0, 0.0]
                 },
                 Point3Input {
                     position: [1.0, -1.0, 0.0, 1.0],
                     color: [1.0, 1.0, 1.0, 1.0],
+                    noraml: [0.0, 0.0, 1.0, 0.0]
                 },
                 Point3Input {
                     position: [1.0, 1.0, 0.0, 1.0],
                     color: [1.0, 1.0, 1.0, 1.0],
+                    noraml: [0.0, 0.0, 1.0, 0.0]
                 },
             ]),
             usage: BufferUsages::VERTEX,
@@ -94,14 +101,19 @@ mod inner {
                         binding: 4,
                         resource: wgpu::BindingResource::TextureView(view_depth_texture),
                     },
-                    // light_tex
+                    //view_normal_tex
                     wgpu::BindGroupEntry {
                         binding: 5,
+                        resource: wgpu::BindingResource::TextureView(view_normal_texture),
+                    },
+                    // light_tex
+                    wgpu::BindGroupEntry {
+                        binding: 6,
                         resource: wgpu::BindingResource::TextureView(light_texture),
                     },
                     // sampler
                     wgpu::BindGroupEntry {
-                        binding: 6,
+                        binding: 7,
                         resource: wgpu::BindingResource::Sampler(&sampler),
                     },
                 ],
@@ -174,13 +186,13 @@ impl BodyRenderer {
                     binding: 4,
                     visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        sample_type: wgpu::TextureSampleType::Depth,
                         view_dimension: wgpu::TextureViewDimension::D2,
                         multisampled: false,
                     },
                     count: None,
                 },
-                // light_tex
+                // view_normal_tex
                 wgpu::BindGroupLayoutEntry {
                     binding: 5,
                     visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
@@ -191,9 +203,20 @@ impl BodyRenderer {
                     },
                     count: None,
                 },
-                // sampler
+                // light_tex
                 wgpu::BindGroupLayoutEntry {
                     binding: 6,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                // sampler
+                wgpu::BindGroupLayoutEntry {
+                    binding: 7,
                     visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
@@ -234,6 +257,7 @@ impl BodyRenderer {
         surface: &TextureView,
         view_texture: &Texture,
         view_depth_texture: &Texture,
+        view_noraml_texture: &Texture,
         light_texture_v: Vec<(&Light, Texture)>,
         view_m: &Matrix4<f32>,
         proj_m: &Matrix4<f32>,
@@ -263,6 +287,7 @@ impl BodyRenderer {
         let view_depth_texture_view =
             view_depth_texture.create_view(&TextureViewDescriptor::default());
         let view_texture_view = view_texture.create_view(&TextureViewDescriptor::default());
+        let view_noraml_texture_view = view_noraml_texture.create_view(&TextureViewDescriptor::default());
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -298,6 +323,7 @@ impl BodyRenderer {
                     &light_buf,
                     &view_texture_view,
                     &view_depth_texture_view,
+                    &view_noraml_texture_view,
                     light_texture_view,
                 );
             }

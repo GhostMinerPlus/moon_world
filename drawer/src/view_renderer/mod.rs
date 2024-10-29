@@ -4,8 +4,8 @@ use nalgebra::Matrix4;
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     BindGroupLayout, Buffer, BufferUsages, DepthBiasState, DepthStencilState, Device, Extent3d,
-    Operations, Queue, RenderPassDepthStencilAttachment, RenderPipeline, StencilState, Texture,
-    TextureDescriptor, TextureFormat, TextureUsages,
+    Operations, Queue, RenderPassDepthStencilAttachment, RenderPipeline, SamplerDescriptor,
+    StencilState, Texture, TextureDescriptor, TextureFormat, TextureUsages,
 };
 
 use crate::{pipeline, structs::Point3Input};
@@ -15,21 +15,50 @@ pub struct ViewRenderer {
     bind_group_layout: BindGroupLayout,
     view_texture: Texture,
     view_depth_texture: Texture,
+    view_normal_texture: Texture,
 }
 
 impl ViewRenderer {
     pub fn new(device: &Device, format: TextureFormat) -> Self {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::StorageTexture {
+                        access: wgpu::StorageTextureAccess::WriteOnly,
+                        format: TextureFormat::Rgba8Unorm,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
             label: Some("light"),
         });
 
@@ -84,12 +113,27 @@ impl ViewRenderer {
             usage: TextureUsages::TEXTURE_BINDING | TextureUsages::RENDER_ATTACHMENT,
             view_formats: &[],
         });
+        let view_normal_texture = device.create_texture(&TextureDescriptor {
+            label: None,
+            size: Extent3d {
+                width: 1024,
+                height: 1024,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: TextureFormat::Rgba8Unorm,
+            usage: TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
 
         Self {
             render_pipeline,
             bind_group_layout,
             view_texture,
             view_depth_texture,
+            view_normal_texture,
         }
     }
 
@@ -97,12 +141,18 @@ impl ViewRenderer {
         &self,
         device: &Device,
         queue: &Queue,
-        mvp: &Matrix4<f32>,
+        mv: &Matrix4<f32>,
+        proj: &Matrix4<f32>,
         body_v: &[Arc<Buffer>],
-    ) -> (&Texture, &Texture) {
-        let mvp_buf = device.create_buffer_init(&BufferInitDescriptor {
+    ) -> (&Texture, &Texture, &Texture) {
+        let mv_buf = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
-            contents: bytemuck::cast_slice(mvp.as_slice()),
+            contents: bytemuck::cast_slice(mv.as_slice()),
+            usage: BufferUsages::UNIFORM,
+        });
+        let proj_buf = device.create_buffer_init(&BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(proj.as_slice()),
             usage: BufferUsages::UNIFORM,
         });
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -116,6 +166,19 @@ impl ViewRenderer {
             let view_depth_texture_view = self
                 .view_depth_texture
                 .create_view(&wgpu::TextureViewDescriptor::default());
+            let view_normal_texture_view = self
+                .view_normal_texture
+                .create_view(&wgpu::TextureViewDescriptor::default());
+            let sampler = device.create_sampler(&SamplerDescriptor {
+                label: None,
+                address_mode_u: wgpu::AddressMode::ClampToEdge,
+                address_mode_v: wgpu::AddressMode::ClampToEdge,
+                address_mode_w: wgpu::AddressMode::ClampToEdge,
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Nearest,
+                mipmap_filter: wgpu::FilterMode::Nearest,
+                ..Default::default()
+            });
 
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
@@ -144,10 +207,24 @@ impl ViewRenderer {
                 0,
                 &device.create_bind_group(&wgpu::BindGroupDescriptor {
                     layout: &self.bind_group_layout,
-                    entries: &[wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: mvp_buf.as_entire_binding(),
-                    }],
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: mv_buf.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: proj_buf.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::TextureView(&view_normal_texture_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: wgpu::BindingResource::Sampler(&sampler),
+                        },
+                    ],
                     label: None,
                 }),
                 &[],
@@ -164,7 +241,11 @@ impl ViewRenderer {
 
         queue.submit(std::iter::once(encoder.finish()));
 
-        (&self.view_texture, &self.view_depth_texture)
+        (
+            &self.view_texture,
+            &self.view_depth_texture,
+            &self.view_normal_texture,
+        )
     }
 }
 
@@ -226,26 +307,32 @@ mod tests {
                     Point3Input {
                         position: [0.0, 0.0, -10.0, 1.0],
                         color: [1.0, 1.0, 1.0, 1.0],
+                        noraml: [0.0, 0.0, 1.0, 0.0],
                     },
                     Point3Input {
                         position: [1.0, 0.0, -10.0, 1.0],
                         color: [1.0, 1.0, 1.0, 1.0],
+                        noraml: [0.0, 0.0, 1.0, 0.0],
                     },
                     Point3Input {
                         position: [0.0, 1.0, -10.0, 1.0],
                         color: [1.0, 1.0, 1.0, 1.0],
+                        noraml: [0.0, 0.0, 1.0, 0.0],
                     },
                     Point3Input {
                         position: [0.0, 0.0, -5.0, 1.0],
                         color: [1.0, 1.0, 1.0, 1.0],
+                        noraml: [0.0, 0.0, 1.0, 0.0],
                     },
                     Point3Input {
                         position: [-0.5, 0.0, -5.0, 1.0],
                         color: [1.0, 1.0, 1.0, 1.0],
+                        noraml: [0.0, 0.0, 1.0, 0.0],
                     },
                     Point3Input {
                         position: [0.0, -0.5, -5.0, 1.0],
                         color: [1.0, 1.0, 1.0, 1.0],
+                        noraml: [0.0, 0.0, 1.0, 0.0],
                     },
                 ]),
                 usage: BufferUsages::VERTEX,
@@ -254,6 +341,7 @@ mod tests {
             renderer.view_renderer(
                 &device,
                 &queue,
+                &Matrix4::identity(),
                 &Matrix4::new_perspective(1.0, 45.0, 0.1, 500.0),
                 &look_v,
             );

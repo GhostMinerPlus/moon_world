@@ -607,12 +607,9 @@ impl ThreeDrawer {
             })
             .collect::<Vec<(&Light, Texture)>>();
         // color and depth of view
-        let (view_texture, view_depth_texture) = {
-            let mvp = self.view_m * self.proj_m;
-
-            self.view_renderer
-                .view_renderer(device, queue, &mvp, &body_buffer_v)
-        };
+        let (view_texture, view_depth_texture, view_normal_texture) = self
+            .view_renderer
+            .view_renderer(device, queue, &self.view_m, &self.proj_m, &body_buffer_v);
 
         self.body_renderer.body_render(
             device,
@@ -620,6 +617,7 @@ impl ThreeDrawer {
             surface,
             view_texture,
             view_depth_texture,
+            view_normal_texture,
             light_texture_v,
             &self.view_m,
             &self.proj_m,

@@ -51,12 +51,13 @@ impl PointInput {
 pub struct Point3Input {
     pub position: [f32; 4],
     pub color: [f32; 4],
+    pub noraml: [f32; 4],
 }
 
 impl Point3Input {
     const POS_ONLY_ATTRIBS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![0 => Float32x4];
-    const ATTRIBS: [wgpu::VertexAttribute; 2] =
-        wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4];
+    const ATTRIBS: [wgpu::VertexAttribute; 3] =
+        wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4, 2 => Float32x4];
 
     pub fn pos_only_desc<'a>() -> wgpu::VertexBufferLayout<'a> {
         wgpu::VertexBufferLayout {
