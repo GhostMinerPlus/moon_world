@@ -32,5 +32,7 @@ fn fs_main(in: Fragment) -> @location(0) vec4<f32> {
     let depth = textureSample(view_depth_tex, tex_sampler, crd);
     let normal = textureSample(view_normal_tex, tex_sampler, crd);
 
-    return color;
+    let lightness = abs(dot(normal, vec4<f32>(0.0, 0.0, 1.0, 0.0)));
+
+    return vec4<f32>(color.rgb * lightness, color.a);
 }

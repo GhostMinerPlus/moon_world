@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use drawer::{save_texture, structs::Point3Input, Light, ThreeDrawer, ThreeLook};
+use drawer::{save_texture, Light, ThreeDrawer, ThreeLook};
 use nalgebra::{vector, Matrix4};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
@@ -67,47 +67,25 @@ fn main() {
                 color: vector![1.0, 1.0, 1.0, 1.0],
                 matrix: Matrix4::identity(),
             }),
-            ThreeLook::Body(Arc::new(device.create_buffer_init(&BufferInitDescriptor {
-                label: None,
-                contents: bytemuck::cast_slice(&[
-                    Point3Input {
-                        position: [0.0, 0.0, -10.0, 1.0],
-                        color: [1.0, 1.0, 1.0, 1.0],
-                        noraml: [0.0, 0.0, 1.0, 0.0]
-                    },
-                    Point3Input {
-                        position: [1.0, 0.0, -10.0, 1.0],
-                        color: [1.0, 1.0, 1.0, 1.0],
-                        noraml: [0.0, 0.0, 1.0, 0.0]
-                    },
-                    Point3Input {
-                        position: [0.0, 1.0, -10.0, 1.0],
-                        color: [1.0, 1.0, 1.0, 1.0],
-                        noraml: [0.0, 0.0, 1.0, 0.0]
-                    },
-                    Point3Input {
-                        position: [0.0, 0.0, -5.0, 1.0],
-                        color: [1.0, 1.0, 1.0, 1.0],
-                        noraml: [0.0, 0.0, 1.0, 0.0]
-                    },
-                    Point3Input {
-                        position: [-0.5, 0.0, -5.0, 1.0],
-                        color: [1.0, 1.0, 1.0, 1.0],
-                        noraml: [0.0, 0.0, 1.0, 0.0]
-                    },
-                    Point3Input {
-                        position: [0.0, -0.5, -5.0, 1.0],
-                        color: [1.0, 1.0, 1.0, 1.0],
-                        noraml: [0.0, 0.0, 1.0, 0.0]
-                    },
-                ]),
-                usage: BufferUsages::VERTEX,
-            }))),
+            ThreeLook::Body(Arc::new(
+                device.create_buffer_init(&BufferInitDescriptor {
+                    label: None,
+                    contents: bytemuck::cast_slice(
+                        &drawer::structs::Body::cube(
+                            Matrix4::new_translation(&vector![0.0, 0.0, -5.0])
+                                * Matrix4::new_rotation(vector![0.0, 1.0, 0.0]),
+                            vector![1.0, 1.0, 1.0, 1.0],
+                        )
+                        .vertex_v()[0..24],
+                    ),
+                    usage: BufferUsages::VERTEX,
+                }),
+            )),
         ];
         let three_drawer = ThreeDrawer::new(
             &device,
             wgpu::TextureFormat::Rgba8Unorm,
-            Matrix4::new_perspective(1.0, 45.0, 0.1, 500.0),
+            Matrix4::new_perspective(1.0, 120.0, 0.1, 500.0),
         );
 
         let _ = three_drawer.render(

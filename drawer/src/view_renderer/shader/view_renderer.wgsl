@@ -19,7 +19,7 @@ struct Fragment {
 fn vs_main(in: Vertex) -> Fragment {
     var out: Fragment;
 
-    out.position = mv * proj * in.position;
+    out.position = proj * mv * in.position;
     out.color = in.color;
     out.noraml = mv * in.noraml;
 

@@ -80,7 +80,7 @@ impl ViewRenderer {
             Some(DepthStencilState {
                 format: TextureFormat::Depth32Float,
                 depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
+                depth_compare: wgpu::CompareFunction::LessEqual,
                 stencil: StencilState::default(),
                 bias: DepthBiasState::default(),
             }),
@@ -253,8 +253,8 @@ impl ViewRenderer {
 mod tests {
     use std::sync::Arc;
 
-    use crate::structs::Point3Input;
-    use nalgebra::Matrix4;
+    use crate::structs;
+    use nalgebra::{vector, Matrix4};
     use wgpu::{
         util::{BufferInitDescriptor, DeviceExt},
         BufferUsages, TextureFormat,
@@ -288,7 +288,8 @@ mod tests {
             let (device, queue) = adapter
                 .request_device(
                     &wgpu::DeviceDescriptor {
-                        required_features: wgpu::Features::MAPPABLE_PRIMARY_BUFFERS,
+                        required_features: wgpu::Features::MAPPABLE_PRIMARY_BUFFERS
+                            | wgpu::Features::VERTEX_WRITABLE_STORAGE,
                         // WebGL doesn't support all of wgpu's features, so if
                         // we're building for the web we'll have to disable some.
                         required_limits: wgpu::Limits::default(),
@@ -301,48 +302,26 @@ mod tests {
                 .unwrap();
 
             let renderer = ViewRenderer::new(&device, TextureFormat::Rgba8Unorm);
-            let look_v = vec![Arc::new(device.create_buffer_init(&BufferInitDescriptor {
-                label: None,
-                contents: bytemuck::cast_slice(&[
-                    Point3Input {
-                        position: [0.0, 0.0, -10.0, 1.0],
-                        color: [1.0, 1.0, 1.0, 1.0],
-                        noraml: [0.0, 0.0, 1.0, 0.0],
-                    },
-                    Point3Input {
-                        position: [1.0, 0.0, -10.0, 1.0],
-                        color: [1.0, 1.0, 1.0, 1.0],
-                        noraml: [0.0, 0.0, 1.0, 0.0],
-                    },
-                    Point3Input {
-                        position: [0.0, 1.0, -10.0, 1.0],
-                        color: [1.0, 1.0, 1.0, 1.0],
-                        noraml: [0.0, 0.0, 1.0, 0.0],
-                    },
-                    Point3Input {
-                        position: [0.0, 0.0, -5.0, 1.0],
-                        color: [1.0, 1.0, 1.0, 1.0],
-                        noraml: [0.0, 0.0, 1.0, 0.0],
-                    },
-                    Point3Input {
-                        position: [-0.5, 0.0, -5.0, 1.0],
-                        color: [1.0, 1.0, 1.0, 1.0],
-                        noraml: [0.0, 0.0, 1.0, 0.0],
-                    },
-                    Point3Input {
-                        position: [0.0, -0.5, -5.0, 1.0],
-                        color: [1.0, 1.0, 1.0, 1.0],
-                        noraml: [0.0, 0.0, 1.0, 0.0],
-                    },
-                ]),
-                usage: BufferUsages::VERTEX,
-            }))];
+            let look_v = vec![Arc::new(
+                device.create_buffer_init(&BufferInitDescriptor {
+                    label: None,
+                    contents: bytemuck::cast_slice(
+                        &structs::Body::cube(
+                            Matrix4::new_translation(&vector![0.0, 0.0, -5.0])
+                                * Matrix4::new_rotation(vector![0.0, 1.0, 0.0]),
+                            vector![1.0, 1.0, 1.0, 1.0],
+                        )
+                        .vertex_v()[0..24],
+                    ),
+                    usage: BufferUsages::VERTEX,
+                }),
+            )];
 
             renderer.view_renderer(
                 &device,
                 &queue,
                 &Matrix4::identity(),
-                &Matrix4::new_perspective(1.0, 45.0, 0.1, 500.0),
+                &Matrix4::new_perspective(1.0, 120.0, 0.1, 500.0),
                 &look_v,
             );
         })
