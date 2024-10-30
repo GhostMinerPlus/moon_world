@@ -3,9 +3,8 @@ use std::sync::Arc;
 use nalgebra::Matrix4;
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    BindGroupLayout, Buffer, BufferUsages, DepthBiasState, DepthStencilState, Device, Extent3d,
-    Operations, Queue, RenderPassDepthStencilAttachment, RenderPipeline, SamplerDescriptor,
-    StencilState, Texture, TextureDescriptor, TextureFormat, TextureUsages,
+    BindGroupLayout, Buffer, BufferUsages, Device, Extent3d, Queue,
+    RenderPipeline, SamplerDescriptor, Texture, TextureDescriptor, TextureFormat, TextureUsages,
 };
 
 use crate::{pipeline, structs::Point3Input};
@@ -14,7 +13,6 @@ pub struct ViewRenderer {
     render_pipeline: RenderPipeline,
     bind_group_layout: BindGroupLayout,
     view_texture: Texture,
-    view_depth_texture: Texture,
     view_normal_texture: Texture,
 }
 
@@ -55,6 +53,16 @@ impl ViewRenderer {
                 wgpu::BindGroupLayoutEntry {
                     binding: 3,
                     visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::StorageTexture {
+                        access: wgpu::StorageTextureAccess::ReadWrite,
+                        format: TextureFormat::Rgba8Unorm,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
@@ -77,13 +85,7 @@ impl ViewRenderer {
             &[Point3Input::desc()],
             format,
             wgpu::PrimitiveTopology::TriangleList,
-            Some(DepthStencilState {
-                format: TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::LessEqual,
-                stencil: StencilState::default(),
-                bias: DepthBiasState::default(),
-            }),
+            None,
         );
         let view_texture = device.create_texture(&TextureDescriptor {
             label: None,
@@ -96,20 +98,6 @@ impl ViewRenderer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format,
-            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        });
-        let view_depth_texture = device.create_texture(&TextureDescriptor {
-            label: None,
-            size: Extent3d {
-                width: 1024,
-                height: 1024,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: TextureFormat::Depth32Float,
             usage: TextureUsages::TEXTURE_BINDING | TextureUsages::RENDER_ATTACHMENT,
             view_formats: &[],
         });
@@ -132,7 +120,6 @@ impl ViewRenderer {
             render_pipeline,
             bind_group_layout,
             view_texture,
-            view_depth_texture,
             view_normal_texture,
         }
     }
@@ -144,7 +131,21 @@ impl ViewRenderer {
         mv: &Matrix4<f32>,
         proj: &Matrix4<f32>,
         body_v: &[Arc<Buffer>],
-    ) -> (&Texture, &Texture, &Texture) {
+    ) -> (&Texture, Texture, &Texture) {
+        let view_depth_texture = device.create_texture(&TextureDescriptor {
+            label: None,
+            size: Extent3d {
+                width: 1024,
+                height: 1024,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: TextureFormat::Rgba8Unorm,
+            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::STORAGE_BINDING,
+            view_formats: &[],
+        });
         let mv_buf = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
             contents: bytemuck::cast_slice(mv.as_slice()),
@@ -163,9 +164,8 @@ impl ViewRenderer {
             let view_texture_view = self
                 .view_texture
                 .create_view(&wgpu::TextureViewDescriptor::default());
-            let view_depth_texture_view = self
-                .view_depth_texture
-                .create_view(&wgpu::TextureViewDescriptor::default());
+            let view_depth_texture_view =
+                view_depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
             let view_normal_texture_view = self
                 .view_normal_texture
                 .create_view(&wgpu::TextureViewDescriptor::default());
@@ -190,14 +190,7 @@ impl ViewRenderer {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
-                    view: &view_depth_texture_view,
-                    depth_ops: Some(Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
+                depth_stencil_attachment: None,
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
@@ -222,6 +215,10 @@ impl ViewRenderer {
                         },
                         wgpu::BindGroupEntry {
                             binding: 3,
+                            resource: wgpu::BindingResource::TextureView(&view_depth_texture_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 4,
                             resource: wgpu::BindingResource::Sampler(&sampler),
                         },
                     ],
@@ -243,7 +240,7 @@ impl ViewRenderer {
 
         (
             &self.view_texture,
-            &self.view_depth_texture,
+            view_depth_texture,
             &self.view_normal_texture,
         )
     }
@@ -289,7 +286,8 @@ mod tests {
                 .request_device(
                     &wgpu::DeviceDescriptor {
                         required_features: wgpu::Features::MAPPABLE_PRIMARY_BUFFERS
-                            | wgpu::Features::VERTEX_WRITABLE_STORAGE,
+                            | wgpu::Features::VERTEX_WRITABLE_STORAGE
+                            | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
                         // WebGL doesn't support all of wgpu's features, so if
                         // we're building for the web we'll have to disable some.
                         required_limits: wgpu::Limits::default(),

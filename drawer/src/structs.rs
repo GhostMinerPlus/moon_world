@@ -186,7 +186,6 @@ impl Body {
         }
 
         for vertex in &mut vertex_v {
-            log::debug!("vertex.position = {:?}", vertex.position);
             let position = m.transform_point(&point![
                 vertex.position[0],
                 vertex.position[1],

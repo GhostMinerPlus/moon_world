@@ -616,7 +616,7 @@ impl ThreeDrawer {
             queue,
             surface,
             view_texture,
-            view_depth_texture,
+            &view_depth_texture,
             view_normal_texture,
             light_texture_v,
             &self.view_m,

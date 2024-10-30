@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{f32::consts::PI, sync::Arc};
 
 use drawer::{save_texture, Light, ThreeDrawer, ThreeLook};
 use nalgebra::{vector, Matrix4};
@@ -30,7 +30,7 @@ fn main() {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     required_features: wgpu::Features::MAPPABLE_PRIMARY_BUFFERS
-                        | wgpu::Features::VERTEX_WRITABLE_STORAGE,
+                        | wgpu::Features::VERTEX_WRITABLE_STORAGE | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
                     // WebGL doesn't support all of wgpu's features, so if
                     // we're building for the web we'll have to disable some.
                     required_limits: wgpu::Limits::default(),
@@ -72,8 +72,8 @@ fn main() {
                     label: None,
                     contents: bytemuck::cast_slice(
                         &drawer::structs::Body::cube(
-                            Matrix4::new_translation(&vector![0.0, 0.0, -5.0])
-                                * Matrix4::new_rotation(vector![0.0, 1.0, 0.0]),
+                            Matrix4::new_translation(&vector![0.0, 0.0, -4.0])
+                                * Matrix4::new_rotation(vector![0.0, PI * 0.25, 0.0]),
                             vector![1.0, 1.0, 1.0, 1.0],
                         )
                         .vertex_v()[0..24],
