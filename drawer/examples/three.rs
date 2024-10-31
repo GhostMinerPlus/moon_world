@@ -74,7 +74,7 @@ fn main() {
                     contents: bytemuck::cast_slice(
                         drawer::structs::Body::cube(
                             Matrix4::new_translation(&vector![0.0, 0.0, -2.0])
-                            * Matrix4::new_rotation(vector![0.0, PI * 0.25, 0.0]),
+                                * Matrix4::new_rotation(vector![0.0, PI * 0.25, 0.0]),
                             vector![1.0, 1.0, 1.0, 1.0],
                         )
                         .vertex_v(),
@@ -86,7 +86,7 @@ fn main() {
         let three_drawer = ThreeDrawer::new(
             &device,
             wgpu::TextureFormat::Rgba8Unorm,
-            Matrix4::new_perspective(1.0, PI * 0.6, 0.1, 500.0),
+            drawer::WGPU_OFFSET_M * Matrix4::new_perspective(1.0, PI * 0.6, 0.1, 500.0),
         );
 
         let _ = three_drawer.render(

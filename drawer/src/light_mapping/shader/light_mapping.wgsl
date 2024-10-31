@@ -19,12 +19,5 @@ fn vs_main(in: Vertex) -> Fragment {
 
 @fragment
 fn fs_main(in: Fragment) -> @location(0) vec4<f32> {
-    let bit_shift = vec4<f32>(1.0, 256.0, 256.0 * 256.0, 256.0 * 256.0 * 256.0);
-    let bit_mask = vec4<f32>(1.0/256.0, 1.0/256.0, 1.0/256.0, 0.0);
-
-    var color = fract(in.position.z * bit_shift);
-
-    color -= color.gbaa * bit_mask;
-
-    return color;
+    return vec4<f32>(1.0, 1.0, 1.0, 1.0);
 }

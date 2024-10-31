@@ -82,6 +82,10 @@ pub mod err;
 pub mod light_mapping;
 pub mod structs;
 
+pub const WGPU_OFFSET_M: Matrix4<f32> = Matrix4::new(
+    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.5, 0.0, 0.0, 0.0, 1.0,
+);
+
 pub enum ThreeLook {
     Body(Arc<wgpu::Buffer>),
     Light(Light),
@@ -605,11 +609,15 @@ impl ThreeDrawer {
                     ),
                 )
             })
-            .collect::<Vec<(&Light, Texture)>>();
+            .collect::<Vec<(&Light, (Texture, Texture))>>();
         // color and depth of view
-        let (view_texture, depth_texture) = self
-            .view_renderer
-            .view_renderer(device, queue, &self.view_m, &self.proj_m, &body_buffer_v);
+        let (view_texture, depth_texture) = self.view_renderer.view_renderer(
+            device,
+            queue,
+            &self.view_m,
+            &self.proj_m,
+            &body_buffer_v,
+        );
 
         self.body_renderer.body_render(
             device,

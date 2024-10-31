@@ -25,6 +25,7 @@ mod inner {
         view_texture: &TextureView,
         depth_texture: &TextureView,
         light_texture: &TextureView,
+        light_depth_tex: &TextureView,
     ) {
         let body = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
@@ -94,6 +95,11 @@ mod inner {
                     wgpu::BindGroupEntry {
                         binding: 5,
                         resource: wgpu::BindingResource::TextureView(light_texture),
+                    },
+                    // light_depth_tex
+                    wgpu::BindGroupEntry {
+                        binding: 6,
+                        resource: wgpu::BindingResource::TextureView(light_depth_tex),
                     },
                 ],
                 label: None,
@@ -181,7 +187,18 @@ impl BodyRenderer {
                         multisampled: false,
                     },
                     count: None,
-                }
+                },
+                // light_depth_tex
+                wgpu::BindGroupLayoutEntry {
+                    binding: 6,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Depth,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
             label: Some("light"),
         });
@@ -218,7 +235,7 @@ impl BodyRenderer {
         surface: &TextureView,
         view_texture: &Texture,
         depth_texture: &Texture,
-        light_texture_v: Vec<(&Light, Texture)>,
+        light_texture_v: Vec<(&Light, (Texture, Texture))>,
         view_m: &Matrix4<f32>,
         proj_m: &Matrix4<f32>,
     ) -> err::Result<()> {
@@ -237,15 +254,17 @@ impl BodyRenderer {
         });
         let light_texture_view_v = light_texture_v
             .iter()
-            .map(|(light, tex)| {
+            .map(|(light, (color_tex, depth_tex))| {
                 (
                     &light.matrix,
-                    tex.create_view(&TextureViewDescriptor::default()),
+                    (
+                        color_tex.create_view(&TextureViewDescriptor::default()),
+                        depth_tex.create_view(&TextureViewDescriptor::default()),
+                    ),
                 )
             })
-            .collect::<Vec<(&Matrix4<f32>, TextureView)>>();
-        let depth_texture_view =
-            depth_texture.create_view(&TextureViewDescriptor::default());
+            .collect::<Vec<(&Matrix4<f32>, (TextureView, TextureView))>>();
+        let depth_texture_view = depth_texture.create_view(&TextureViewDescriptor::default());
         let view_texture_view = view_texture.create_view(&TextureViewDescriptor::default());
 
         {
@@ -266,7 +285,7 @@ impl BodyRenderer {
 
             render_pass.set_pipeline(&self.render_pipeline);
 
-            for (light_m, light_texture_view) in &light_texture_view_v {
+            for (light_m, (color_texture_view, depth_tex_view)) in &light_texture_view_v {
                 let light_buf = device.create_buffer_init(&BufferInitDescriptor {
                     label: None,
                     contents: bytemuck::cast_slice(light_m.data.as_slice()),
@@ -282,7 +301,8 @@ impl BodyRenderer {
                     &light_buf,
                     &view_texture_view,
                     &depth_texture_view,
-                    light_texture_view,
+                    color_texture_view,
+                    depth_tex_view,
                 );
             }
         }

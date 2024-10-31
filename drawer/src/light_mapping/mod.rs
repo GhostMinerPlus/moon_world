@@ -3,7 +3,8 @@ use std::sync::Arc;
 use nalgebra::Matrix4;
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    BindGroupLayout, Buffer, BufferUsages, Device, Extent3d, Queue, RenderPipeline, Texture,
+    BindGroupLayout, Buffer, BufferUsages, DepthBiasState, DepthStencilState, Device, Extent3d,
+    Queue, RenderPassDepthStencilAttachment, RenderPipeline, StencilState, Texture,
     TextureDescriptor, TextureFormat, TextureUsages,
 };
 
@@ -48,7 +49,13 @@ impl LightMappingBuilder {
             &[Point3Input::pos_only_desc()],
             format,
             wgpu::PrimitiveTopology::TriangleList,
-            None,
+            Some(DepthStencilState {
+                format: TextureFormat::Depth32Float,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::LessEqual,
+                stencil: StencilState::default(),
+                bias: DepthBiasState::default(),
+            }),
         );
 
         Self {
@@ -64,7 +71,7 @@ impl LightMappingBuilder {
         queue: &Queue,
         light: &Matrix4<f32>,
         body_v: &[Arc<Buffer>],
-    ) -> Texture {
+    ) -> (Texture, Texture) {
         let light_buf = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
             contents: bytemuck::cast_slice(light.as_slice()),
@@ -74,7 +81,7 @@ impl LightMappingBuilder {
             label: Some("Render Encoder"),
         });
 
-        let texture = device.create_texture(&TextureDescriptor {
+        let color_texture = device.create_texture(&TextureDescriptor {
             label: None,
             size: Extent3d {
                 width: 1024,
@@ -85,26 +92,46 @@ impl LightMappingBuilder {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: self.format,
-            usage: TextureUsages::RENDER_ATTACHMENT
-                | TextureUsages::COPY_SRC
-                | TextureUsages::TEXTURE_BINDING,
+            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let depth_texture = device.create_texture(&TextureDescriptor {
+            label: None,
+            size: Extent3d {
+                width: 1024,
+                height: 1024,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: TextureFormat::Depth32Float,
+            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_SRC,
             view_formats: &[],
         });
 
         {
-            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+            let color_view = color_texture.create_view(&wgpu::TextureViewDescriptor::default());
+            let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
+                    view: &color_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Load,
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
+                    view: &depth_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
@@ -134,7 +161,7 @@ impl LightMappingBuilder {
 
         queue.submit(std::iter::once(encoder.finish()));
 
-        texture
+        (color_texture, depth_texture)
     }
 }
 
@@ -199,17 +226,17 @@ mod tests {
                     Point3Input {
                         position: [0.0, 0.0, 0.5, 1.0],
                         color: [1.0, 1.0, 1.0, 1.0],
-                        normal: [0.0, 0.0, 1.0, 0.0]
+                        normal: [0.0, 0.0, 1.0, 0.0],
                     },
                     Point3Input {
                         position: [1.0, 0.0, 0.5, 1.0],
                         color: [1.0, 1.0, 1.0, 1.0],
-                        normal: [0.0, 0.0, 1.0, 0.0]
+                        normal: [0.0, 0.0, 1.0, 0.0],
                     },
                     Point3Input {
                         position: [0.0, 1.0, 0.5, 1.0],
                         color: [1.0, 1.0, 1.0, 1.0],
-                        normal: [0.0, 0.0, 1.0, 0.0]
+                        normal: [0.0, 0.0, 1.0, 0.0],
                     },
                 ]),
                 usage: BufferUsages::VERTEX,
@@ -217,25 +244,25 @@ mod tests {
             let mut encoder =
                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-            let texture = lm_builder.light_mapping(&device, &queue, &light.matrix, &body_v);
+            let (_, depth_tex) = lm_builder.light_mapping(&device, &queue, &light.matrix, &body_v);
 
             let buffer = device.create_buffer(&BufferDescriptor {
                 label: None,
-                size: (texture.width() * texture.height() * 4) as u64,
+                size: (depth_tex.width() * depth_tex.height() * 4) as u64,
                 usage: BufferUsages::COPY_DST | BufferUsages::MAP_READ,
                 mapped_at_creation: false,
             });
             encoder.copy_texture_to_buffer(
-                texture.as_image_copy(),
+                depth_tex.as_image_copy(),
                 ImageCopyBuffer {
                     buffer: &buffer,
                     layout: ImageDataLayout {
                         offset: 0,
-                        bytes_per_row: Some(texture.width() * 4),
+                        bytes_per_row: Some(depth_tex.width() * 4),
                         rows_per_image: None,
                     },
                 },
-                texture.size(),
+                depth_tex.size(),
             );
 
             queue.submit(std::iter::once(encoder.finish()));
@@ -259,7 +286,7 @@ mod tests {
 
             let buf_view = buffer.slice(..).get_mapped_range();
 
-            let b = buf_view[(511 * texture.width() as usize + 512) * 4];
+            let b = buf_view[(511 * depth_tex.width() as usize + 512) * 4];
 
             drop(buf_view);
 

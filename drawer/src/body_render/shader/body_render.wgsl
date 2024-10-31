@@ -11,7 +11,8 @@ struct Fragment {
 @group(0) @binding(2) var<uniform> light: mat4x4<f32>;
 @group(0) @binding(3) var view_tex: texture_2d<f32>;
 @group(0) @binding(4) var depth_tex: texture_depth_2d;
-@group(0) @binding(5) var light_tex: texture_2d<f32>;
+@group(0) @binding(5) var light_color_tex: texture_2d<f32>;
+@group(0) @binding(6) var light_depth_tex: texture_depth_2d;
 
 fn f_2_f4(f: f32) -> vec4<f32> {
     let bit_shift = vec4<f32>(1.0, 10.0, 10.0 * 10.0, 10.0 * 10.0 * 10.0);
