@@ -5,7 +5,7 @@ use wgpu::{
     TextureView, TextureViewDescriptor,
 };
 
-use crate::{err, pipeline, structs::Point3Input, Light};
+use crate::{err, pipeline, save_texture, structs::Point3Input, Light};
 
 mod inner {
     use wgpu::{
@@ -33,32 +33,32 @@ mod inner {
                 Point3Input {
                     position: [-1.0, 1.0, 0.0, 1.0],
                     color: [1.0, 1.0, 1.0, 1.0],
-                    normal: [0.0, 0.0, 1.0, 0.0]
+                    normal: [0.0, 0.0, 1.0, 0.0],
                 },
                 Point3Input {
                     position: [-1.0, -1.0, 0.0, 1.0],
                     color: [1.0, 1.0, 1.0, 1.0],
-                    normal: [0.0, 0.0, 1.0, 0.0]
+                    normal: [0.0, 0.0, 1.0, 0.0],
                 },
                 Point3Input {
                     position: [1.0, -1.0, 0.0, 1.0],
                     color: [1.0, 1.0, 1.0, 1.0],
-                    normal: [0.0, 0.0, 1.0, 0.0]
+                    normal: [0.0, 0.0, 1.0, 0.0],
                 },
                 Point3Input {
                     position: [-1.0, 1.0, 0.0, 1.0],
                     color: [1.0, 1.0, 1.0, 1.0],
-                    normal: [0.0, 0.0, 1.0, 0.0]
+                    normal: [0.0, 0.0, 1.0, 0.0],
                 },
                 Point3Input {
                     position: [1.0, -1.0, 0.0, 1.0],
                     color: [1.0, 1.0, 1.0, 1.0],
-                    normal: [0.0, 0.0, 1.0, 0.0]
+                    normal: [0.0, 0.0, 1.0, 0.0],
                 },
                 Point3Input {
                     position: [1.0, 1.0, 0.0, 1.0],
                     color: [1.0, 1.0, 1.0, 1.0],
-                    normal: [0.0, 0.0, 1.0, 0.0]
+                    normal: [0.0, 0.0, 1.0, 0.0],
                 },
             ]),
             usage: BufferUsages::VERTEX,
@@ -197,7 +197,7 @@ impl BodyRenderer {
                     binding: 5,
                     visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
                         view_dimension: wgpu::TextureViewDimension::D2,
                         multisampled: false,
                     },
@@ -262,6 +262,38 @@ impl BodyRenderer {
         view_m: &Matrix4<f32>,
         proj_m: &Matrix4<f32>,
     ) -> err::Result<()> {
+        save_texture(
+            device,
+            queue,
+            &view_noraml_texture,
+            "normal.png",
+            16,
+            |c, r, buf_view| {
+                let offset = ((r * view_noraml_texture.width() + c) * 16) as usize;
+
+                let r = f32::from_ne_bytes([
+                    buf_view[offset],
+                    buf_view[offset + 1],
+                    buf_view[offset + 2],
+                    buf_view[offset + 3],
+                ]) * 256.0;
+                let g = f32::from_ne_bytes([
+                    buf_view[offset + 4],
+                    buf_view[offset + 5],
+                    buf_view[offset + 6],
+                    buf_view[offset + 7],
+                ]) * 256.0;
+                let b = f32::from_ne_bytes([
+                    buf_view[offset + 8],
+                    buf_view[offset + 9],
+                    buf_view[offset + 10],
+                    buf_view[offset + 11],
+                ]) * 256.0;
+
+                image::Rgba([r as u8, g as u8, b as u8, 255])
+            },
+        );
+
         let view_buf = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
             contents: bytemuck::cast_slice(view_m.data.as_slice()),
@@ -287,7 +319,8 @@ impl BodyRenderer {
         let view_depth_texture_view =
             view_depth_texture.create_view(&TextureViewDescriptor::default());
         let view_texture_view = view_texture.create_view(&TextureViewDescriptor::default());
-        let view_noraml_texture_view = view_noraml_texture.create_view(&TextureViewDescriptor::default());
+        let view_noraml_texture_view =
+            view_noraml_texture.create_view(&TextureViewDescriptor::default());
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {

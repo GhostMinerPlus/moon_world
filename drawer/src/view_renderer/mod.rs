@@ -40,12 +40,13 @@ impl ViewRenderer {
                     },
                     count: None,
                 },
+                // normal_tex
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
                     visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::StorageTexture {
                         access: wgpu::StorageTextureAccess::WriteOnly,
-                        format: TextureFormat::Rgba8Unorm,
+                        format: TextureFormat::Rgba32Float,
                         view_dimension: wgpu::TextureViewDimension::D2,
                     },
                     count: None,
@@ -111,8 +112,8 @@ impl ViewRenderer {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: TextureFormat::Rgba8Unorm,
-            usage: TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING,
+            format: TextureFormat::Rgba32Float,
+            usage: TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_SRC,
             view_formats: &[],
         });
 

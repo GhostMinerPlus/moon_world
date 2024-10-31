@@ -32,13 +32,13 @@ fn vs_main(in: Vertex) -> Fragment {
 @fragment
 fn fs_main(in: Fragment) -> @location(0) vec4<f32> {
     let crd = in.position.xy / 1024.0;
-    let i_light = normalize(vec4<f32>(0.0, -1.0, -2.0, 0.0));
+    let i_light = normalize(vec4<f32>(0.0, -1.0, -1.0, 0.0));
 
     let income = normalize(-vec4<f32>(crd.x * 2.0 - 1.0, 1.0 - 2.0 * crd.y, -0.1, 0.0));
 
     let color = textureSample(view_tex, tex_sampler, crd);
     // let depth = (1.0 - f4_2_f(textureSample(view_depth_tex, tex_sampler, crd))) * 500.0;
-    let normal = textureSample(view_normal_tex, tex_sampler, crd);
+    let normal = textureLoad(view_normal_tex, vec2<u32>(in.position.xy), 0) * 2.0 - 1.0;
 
     // let pos = vec4<f32>(0.0, 0.0, 0.0, 1.0) - depth * income;
     let r_light = normalize(reflect(i_light, normal));

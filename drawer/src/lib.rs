@@ -630,6 +630,7 @@ pub fn save_texture(
     queue: &Queue,
     texture: &Texture,
     path: &str,
+    p_sz: usize,
     f: impl Fn(u32, u32, &[u8]) -> Rgba<u8>,
 ) {
     let mut encoder =
@@ -638,7 +639,7 @@ pub fn save_texture(
 
     let buffer = device.create_buffer(&BufferDescriptor {
         label: None,
-        size: (texture.width() * texture.height() * 4) as u64,
+        size: (texture.width() * texture.height() * p_sz as u32) as u64,
         usage: BufferUsages::COPY_DST | BufferUsages::MAP_READ,
         mapped_at_creation: false,
     });
@@ -648,7 +649,7 @@ pub fn save_texture(
             buffer: &buffer,
             layout: ImageDataLayout {
                 offset: 0,
-                bytes_per_row: Some(texture.width() * 4),
+                bytes_per_row: Some(texture.width() * p_sz as u32),
                 rows_per_image: None,
             },
         },

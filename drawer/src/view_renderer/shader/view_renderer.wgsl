@@ -13,7 +13,7 @@ struct Fragment {
 
 @group(0) @binding(0) var<uniform> mv: mat4x4<f32>;
 @group(0) @binding(1) var<uniform> proj: mat4x4<f32>;
-@group(0) @binding(2) var normal_tex: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(2) var normal_tex: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(3) var depth_tex: texture_storage_2d<rgba8unorm, read_write>;
 @group(0) @binding(4) var tex_sampler: sampler;
 
@@ -48,15 +48,17 @@ fn vs_main(in: Vertex) -> Fragment {
 
 @fragment
 fn fs_main(in: Fragment) -> @location(0) vec4<f32> {
-    let o_depth = 1.0 - f4_2_f(textureLoad(depth_tex, vec2<i32>(in.position.xy)));
+    let crd = vec2<u32>(in.position.xy);
+
+    let o_depth = 1.0 - f4_2_f(textureLoad(depth_tex, crd));
     let c_depth = - in.pos.z / 500.0;
 
     if c_depth >= o_depth {
         discard;
     }
 
-    textureStore(normal_tex, vec2<i32>(in.position.xy), normalize(in.normal));
-    textureStore(depth_tex, vec2<i32>(in.position.xy), f_2_f4(1.0 - c_depth));
+    textureStore(normal_tex, crd, (normalize(in.normal) + 1.0) * 0.5);
+    textureStore(depth_tex, crd, f_2_f4(1.0 - c_depth));
 
     return in.color;
 }

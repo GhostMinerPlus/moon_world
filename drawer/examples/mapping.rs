@@ -90,6 +90,7 @@ fn main() {
             &queue,
             &texture,
             "mapping.png",
+            4,
             |c, r, buf_view| {
                 let offset = ((r * texture.width() + c) * 4) as usize;
 
