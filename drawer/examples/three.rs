@@ -72,12 +72,12 @@ fn main() {
                 device.create_buffer_init(&BufferInitDescriptor {
                     label: None,
                     contents: bytemuck::cast_slice(
-                        &drawer::structs::Body::cube(
-                            Matrix4::new_translation(&vector![0.0, 0.0, -3.0]),
-                                // * Matrix4::new_rotation(vector![0.0, PI * 0.25, PI * 0.25]),
+                        drawer::structs::Body::cube(
+                            Matrix4::new_translation(&vector![0.0, 0.0, -2.0])
+                            * Matrix4::new_rotation(vector![0.0, PI * 0.25, 0.0]),
                             vector![1.0, 1.0, 1.0, 1.0],
                         )
-                        .vertex_v()[0..24],
+                        .vertex_v(),
                     ),
                     usage: BufferUsages::VERTEX,
                 }),

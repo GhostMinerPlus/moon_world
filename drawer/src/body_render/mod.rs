@@ -5,12 +5,12 @@ use wgpu::{
     TextureView, TextureViewDescriptor,
 };
 
-use crate::{err, pipeline, save_texture, structs::Point3Input, Light};
+use crate::{err, pipeline, structs::Point3Input, Light};
 
 mod inner {
     use wgpu::{
         util::{BufferInitDescriptor, DeviceExt},
-        BindGroupLayout, Buffer, BufferUsages, Device, RenderPass, SamplerDescriptor, TextureView,
+        BindGroupLayout, Buffer, BufferUsages, Device, RenderPass, TextureView,
     };
 
     use crate::structs::Point3Input;
@@ -23,8 +23,7 @@ mod inner {
         proj_buf: &Buffer,
         light_buf: &Buffer,
         view_texture: &TextureView,
-        view_depth_texture: &TextureView,
-        view_normal_texture: &TextureView,
+        depth_texture: &TextureView,
         light_texture: &TextureView,
     ) {
         let body = device.create_buffer_init(&BufferInitDescriptor {
@@ -63,16 +62,6 @@ mod inner {
             ]),
             usage: BufferUsages::VERTEX,
         });
-        let sampler = device.create_sampler(&SamplerDescriptor {
-            label: None,
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
-            ..Default::default()
-        });
 
         render_pass.set_bind_group(
             0,
@@ -96,25 +85,15 @@ mod inner {
                         binding: 3,
                         resource: wgpu::BindingResource::TextureView(view_texture),
                     },
-                    // view_depth_tex
+                    // depth_tex
                     wgpu::BindGroupEntry {
                         binding: 4,
-                        resource: wgpu::BindingResource::TextureView(view_depth_texture),
-                    },
-                    //view_normal_tex
-                    wgpu::BindGroupEntry {
-                        binding: 5,
-                        resource: wgpu::BindingResource::TextureView(view_normal_texture),
+                        resource: wgpu::BindingResource::TextureView(depth_texture),
                     },
                     // light_tex
                     wgpu::BindGroupEntry {
-                        binding: 6,
+                        binding: 5,
                         resource: wgpu::BindingResource::TextureView(light_texture),
-                    },
-                    // sampler
-                    wgpu::BindGroupEntry {
-                        binding: 7,
-                        resource: wgpu::BindingResource::Sampler(&sampler),
                     },
                 ],
                 label: None,
@@ -175,7 +154,7 @@ impl BodyRenderer {
                     binding: 3,
                     visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
                         view_dimension: wgpu::TextureViewDimension::D2,
                         multisampled: false,
                     },
@@ -186,18 +165,7 @@ impl BodyRenderer {
                     binding: 4,
                     visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                // view_normal_tex
-                wgpu::BindGroupLayoutEntry {
-                    binding: 5,
-                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        sample_type: wgpu::TextureSampleType::Depth,
                         view_dimension: wgpu::TextureViewDimension::D2,
                         multisampled: false,
                     },
@@ -205,7 +173,7 @@ impl BodyRenderer {
                 },
                 // light_tex
                 wgpu::BindGroupLayoutEntry {
-                    binding: 6,
+                    binding: 5,
                     visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Float { filterable: true },
@@ -213,14 +181,7 @@ impl BodyRenderer {
                         multisampled: false,
                     },
                     count: None,
-                },
-                // sampler
-                wgpu::BindGroupLayoutEntry {
-                    binding: 7,
-                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
+                }
             ],
             label: Some("light"),
         });
@@ -256,44 +217,11 @@ impl BodyRenderer {
         queue: &Queue,
         surface: &TextureView,
         view_texture: &Texture,
-        view_depth_texture: &Texture,
-        view_noraml_texture: &Texture,
+        depth_texture: &Texture,
         light_texture_v: Vec<(&Light, Texture)>,
         view_m: &Matrix4<f32>,
         proj_m: &Matrix4<f32>,
     ) -> err::Result<()> {
-        save_texture(
-            device,
-            queue,
-            &view_noraml_texture,
-            "normal.png",
-            16,
-            |c, r, buf_view| {
-                let offset = ((r * view_noraml_texture.width() + c) * 16) as usize;
-
-                let r = f32::from_ne_bytes([
-                    buf_view[offset],
-                    buf_view[offset + 1],
-                    buf_view[offset + 2],
-                    buf_view[offset + 3],
-                ]) * 256.0;
-                let g = f32::from_ne_bytes([
-                    buf_view[offset + 4],
-                    buf_view[offset + 5],
-                    buf_view[offset + 6],
-                    buf_view[offset + 7],
-                ]) * 256.0;
-                let b = f32::from_ne_bytes([
-                    buf_view[offset + 8],
-                    buf_view[offset + 9],
-                    buf_view[offset + 10],
-                    buf_view[offset + 11],
-                ]) * 256.0;
-
-                image::Rgba([r as u8, g as u8, b as u8, 255])
-            },
-        );
-
         let view_buf = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
             contents: bytemuck::cast_slice(view_m.data.as_slice()),
@@ -316,11 +244,9 @@ impl BodyRenderer {
                 )
             })
             .collect::<Vec<(&Matrix4<f32>, TextureView)>>();
-        let view_depth_texture_view =
-            view_depth_texture.create_view(&TextureViewDescriptor::default());
+        let depth_texture_view =
+            depth_texture.create_view(&TextureViewDescriptor::default());
         let view_texture_view = view_texture.create_view(&TextureViewDescriptor::default());
-        let view_noraml_texture_view =
-            view_noraml_texture.create_view(&TextureViewDescriptor::default());
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -355,8 +281,7 @@ impl BodyRenderer {
                     &proj_buf,
                     &light_buf,
                     &view_texture_view,
-                    &view_depth_texture_view,
-                    &view_noraml_texture_view,
+                    &depth_texture_view,
                     light_texture_view,
                 );
             }

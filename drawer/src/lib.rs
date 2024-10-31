@@ -563,7 +563,7 @@ impl ThreeDrawer {
     pub fn new(device: &Device, format: TextureFormat, proj_m: Matrix4<f32>) -> Self {
         let light_mapping_builder = light_mapping::LightMappingBuilder::new(device, format);
         let body_renderer = body_render::BodyRenderer::new(device, format);
-        let view_renderer = view_renderer::ViewRenderer::new(device, format);
+        let view_renderer = view_renderer::ViewRenderer::new(device);
 
         Self {
             light_mapping_builder,
@@ -607,7 +607,7 @@ impl ThreeDrawer {
             })
             .collect::<Vec<(&Light, Texture)>>();
         // color and depth of view
-        let (view_texture, view_depth_texture, view_normal_texture) = self
+        let (view_texture, depth_texture) = self
             .view_renderer
             .view_renderer(device, queue, &self.view_m, &self.proj_m, &body_buffer_v);
 
@@ -616,8 +616,7 @@ impl ThreeDrawer {
             queue,
             surface,
             view_texture,
-            &view_depth_texture,
-            view_normal_texture,
+            depth_texture,
             light_texture_v,
             &self.view_m,
             &self.proj_m,

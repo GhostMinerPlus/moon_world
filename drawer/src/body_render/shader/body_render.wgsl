@@ -10,14 +10,18 @@ struct Fragment {
 @group(0) @binding(1) var<uniform> proj: mat4x4<f32>;
 @group(0) @binding(2) var<uniform> light: mat4x4<f32>;
 @group(0) @binding(3) var view_tex: texture_2d<f32>;
-@group(0) @binding(4) var view_depth_tex: texture_2d<f32>;
-@group(0) @binding(5) var view_normal_tex: texture_2d<f32>;
-@group(0) @binding(6) var light_tex: texture_2d<f32>;
-@group(0) @binding(7) var tex_sampler: sampler;
+@group(0) @binding(4) var depth_tex: texture_depth_2d;
+@group(0) @binding(5) var light_tex: texture_2d<f32>;
 
-fn f4_2_f(rgbaDepth: vec4<f32>) -> f32 {
-    let bitShift = vec4<f32>(1.0, 1.0/256.0, 1.0/(256.0*256.0), 1.0/(256.0*256.0*256.0));
-    return dot(rgbaDepth, bitShift);
+fn f_2_f4(f: f32) -> vec4<f32> {
+    let bit_shift = vec4<f32>(1.0, 10.0, 10.0 * 10.0, 10.0 * 10.0 * 10.0);
+    let bit_mask = vec4<f32>(1.0 / 10.0, 1.0 / 10.0, 1.0 / 10.0, 0.0);
+
+    var f4 = fract(f * bit_shift);
+
+    f4 -= f4.gbaa * bit_mask;
+
+    return f4 / 0.9;
 }
 
 @vertex
@@ -31,16 +35,16 @@ fn vs_main(in: Vertex) -> Fragment {
 
 @fragment
 fn fs_main(in: Fragment) -> @location(0) vec4<f32> {
-    let crd = in.position.xy / 1024.0;
+    let crd = vec2<u32>(in.position.xy);
     let i_light = normalize(vec4<f32>(0.0, -1.0, -1.0, 0.0));
+    let income = normalize(-vec4<f32>(in.position.x / 1024.0 * 2.0 - 1.0, 1.0 - 2.0 * in.position.y / 1024.0, -0.1, 0.0));
 
-    let income = normalize(-vec4<f32>(crd.x * 2.0 - 1.0, 1.0 - 2.0 * crd.y, -0.1, 0.0));
+    let view = textureLoad(view_tex, crd, 0);
+    let depth = textureLoad(depth_tex, crd, 0);
 
-    let color = textureSample(view_tex, tex_sampler, crd);
-    // let depth = (1.0 - f4_2_f(textureSample(view_depth_tex, tex_sampler, crd))) * 500.0;
-    let normal = textureLoad(view_normal_tex, vec2<u32>(in.position.xy), 0) * 2.0 - 1.0;
+    let color = f_2_f4(view.w);
+    let normal = vec4<f32>(view.xyz, 0.0);
 
-    // let pos = vec4<f32>(0.0, 0.0, 0.0, 1.0) - depth * income;
     let r_light = normalize(reflect(i_light, normal));
 
     let lightness = dot(r_light, income);
