@@ -20,6 +20,7 @@ mod res;
 mod inner {
     use std::collections::HashMap;
 
+    use error_stack::ResultExt;
     use view_manager::util::VNode;
 
     use crate::err;
@@ -46,7 +47,10 @@ mod inner {
                     }
                 }
                 _ => {
-                    let ele = element_mp.get(&vnode_id).unwrap();
+                    let ele = element_mp
+                        .get(&vnode_id)
+                        .ok_or(err::Error::NotFound)
+                        .attach_printable("element with specified vnode_id not found!")?;
                     match ele {
                         super::AtomElement::Audio(_) => (),
                         super::AtomElement::Physics(_) => (),
@@ -110,7 +114,8 @@ impl EngineBuilder {
             adapter
                 .request_device(
                     &wgpu::DeviceDescriptor {
-                        required_features: wgpu::Features::MAPPABLE_PRIMARY_BUFFERS,
+                        required_features: wgpu::Features::MAPPABLE_PRIMARY_BUFFERS
+                            | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
                         // WebGL doesn't support all of wgpu's features, so if
                         // we're building for the web we'll have to disable some.
                         required_limits: wgpu::Limits::default(),
@@ -297,13 +302,11 @@ impl Engine {
 
     /// called => the engine = rendered
     pub fn render(&mut self) -> err::Result<()> {
-        let mut rp = self.vision_manager.render_pass(&self.watcher);
+        let mut rp = self.vision_manager.render_pass(&self.watcher)?;
 
         inner::render_vnode(&self.vnode_mp, &self.element_mp, &mut rp, 0)?;
 
-        rp.render();
-
-        Ok(())
+        rp.render()
     }
 
     pub fn move_watcher(&mut self, offset: Vector2<f32>) {
@@ -317,23 +320,17 @@ impl Engine {
     /// Element generator, let the variable be id of the new element which consists of physics, vision and audio.
     pub fn create_element(&mut self, id: u64, class: &str) {
         let atom_element = if class.starts_with("Physics:") {
-            match class {
-                "Physics:ball" => {
-                    AtomElement::Physics(self.physics_manager.create_element("ball").unwrap())
-                }
-                _ => {
-                    return;
-                }
-            }
+            AtomElement::Physics(
+                self.physics_manager
+                    .create_element(&class["Physics:".len()..])
+                    .unwrap(),
+            )
         } else if class.starts_with("Vision:") {
-            match class {
-                "Vision:ball" => {
-                    AtomElement::Vision(self.vision_manager.create_element("ball").unwrap())
-                }
-                _ => {
-                    return;
-                }
-            }
+            AtomElement::Vision(
+                self.vision_manager
+                    .create_element(&class["Vision:".len()..])
+                    .unwrap(),
+            )
         } else {
             return;
         };
@@ -392,7 +389,7 @@ impl AsDataManager for Engine {
     {
         Box::pin(async move {
             match func {
-                "$world2_get_pos" => {
+                "$moon_world_get_pos" => {
                     let vnode_id = self
                         .get(&input)
                         .await?

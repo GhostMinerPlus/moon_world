@@ -1,11 +1,12 @@
 use std::{
     collections::HashMap,
+    f32::consts::PI,
     sync::{mpsc::channel, Arc},
 };
 
 use drawer::{
     structs::{self, Watcher},
-    ThreeLook,
+    Light, ThreeLook,
 };
 use error_stack::ResultExt;
 use nalgebra::{vector, Matrix3, Matrix4, Vector3};
@@ -244,7 +245,6 @@ impl PhysicsManager {
 pub struct RenderPass<'a> {
     vm: &'a mut VisionManager,
     output: SurfaceTexture,
-    view: TextureView,
     id_v: Vec<u64>,
 }
 
@@ -254,12 +254,17 @@ impl<'a> RenderPass<'a> {
     }
 
     pub fn render(self) -> err::Result<()> {
+        let view = self
+            .output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
         self.vm
             .three_drawer
             .render(
                 &self.vm.device,
                 &self.vm.queue,
-                &self.view,
+                &view,
                 self.id_v
                     .iter()
                     .map(|id| self.vm.body_mp.get(id).unwrap().look.three_look.as_ref())
@@ -269,42 +274,42 @@ impl<'a> RenderPass<'a> {
             )
             .change_context(err::Error::Other)?;
 
-        {
-            let line_v = inner::gen_line_v(self.vm, &self.id_v);
-            if !line_v.is_empty() {
-                self.vm.ray_drawer.update_line_v(&self.vm.device, &line_v);
+        // {
+        //     let line_v = inner::gen_line_v(self.vm, &self.id_v);
+        //     if !line_v.is_empty() {
+        //         self.vm.ray_drawer.update_line_v(&self.vm.device, &line_v);
 
-                // Draw ray tracing result to texture
-                self.vm
-                    .ray_drawer
-                    .draw_ray_to_point_texture(&self.vm.device, &self.vm.queue);
-            }
+        //         // Draw ray tracing result to texture
+        //         self.vm
+        //             .ray_drawer
+        //             .draw_ray_to_point_texture(&self.vm.device, &self.vm.queue);
+        //     }
 
-            // Let the points be drew to current surface.
-            self.vm
-                .surface_drawer
-                .draw_point_to_surface(
-                    &self.vm.device,
-                    &self.vm.queue,
-                    &self.view,
-                    self.vm.ray_drawer.get_result_buffer(),
-                    self.vm.ray_drawer.get_size_buffer(),
-                )
-                .unwrap();
-        }
+        //     // Let the points be drew to current surface.
+        //     self.vm
+        //         .surface_drawer
+        //         .draw_point_to_surface(
+        //             &self.vm.device,
+        //             &self.vm.queue,
+        //             &self.view,
+        //             self.vm.ray_drawer.get_result_buffer(),
+        //             self.vm.ray_drawer.get_size_buffer(),
+        //         )
+        //         .unwrap();
+        // }
 
-        // Let the watcher be drew to current surface.
-        self.vm
-            .light_drawer
-            .draw_light_to_surface(
-                &self.vm.device,
-                &self.vm.queue,
-                &self.view,
-                self.vm.ray_drawer.get_watcher_buffer(),
-                self.vm.ray_drawer.get_size_buffer(),
-                &inner::gen_light_line_v(self.vm, &self.id_v),
-            )
-            .unwrap();
+        // // Let the watcher be drew to current surface.
+        // self.vm
+        //     .light_drawer
+        //     .draw_light_to_surface(
+        //         &self.vm.device,
+        //         &self.vm.queue,
+        //         &self.view,
+        //         self.vm.ray_drawer.get_watcher_buffer(),
+        //         self.vm.ray_drawer.get_size_buffer(),
+        //         &inner::gen_light_line_v(self.vm, &self.id_v),
+        //     )
+        //     .unwrap();
 
         self.output.present();
 
@@ -338,7 +343,11 @@ impl VisionManager {
         queue: wgpu::Queue,
         config: wgpu::SurfaceConfiguration,
     ) -> Self {
-        let three_drawer = drawer::ThreeDrawer::new(&device, config.format, Matrix4::identity());
+        let three_drawer = drawer::ThreeDrawer::new(
+            &device,
+            config.format,
+            drawer::WGPU_OFFSET_M * Matrix4::new_perspective(1.0, PI * 0.6, 0.1, 500.0),
+        );
 
         Self {
             ray_drawer,
@@ -360,6 +369,8 @@ impl VisionManager {
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
             self.ray_drawer.resize(&self.device, &self.queue, new_size);
+
+            log::debug!("new_size = {new_size:?}");
         }
     }
 
@@ -395,23 +406,60 @@ impl VisionManager {
                 );
                 Some(id)
             }
-            "ball3" => {
-                log::debug!("create_element: create ball {id}");
-
-                let buffer = Arc::new(self.device.create_buffer_init(&BufferInitDescriptor {
-                    label: None,
-                    contents: bytemuck::cast_slice(&[0]),
-                    usage: BufferUsages::VERTEX,
-                }));
+            "light3" => {
+                log::debug!("create_element: create light3 {id}");
 
                 self.body_mp.insert(
                     id,
                     Body {
-                        class: format!("ball3"),
+                        class: format!("light3"),
                         look: BodyLook {
                             ray_look: vec![],
                             light_look: vec![],
-                            three_look: Some(ThreeLook::Body(buffer)),
+                            three_look: Some(ThreeLook::Light(Light {
+                                color: vector![1.0, 1.0, 1.0, 1.0],
+                                view: Matrix4::new_translation(&vector![0.0, 5.0, 0.0])
+                                    * Matrix4::new_rotation(vector![PI * 0.25, 0.0, 0.0]),
+                                proj: drawer::WGPU_OFFSET_M
+                                    * Matrix4::new_orthographic(
+                                        -10.0, 10.0, -10.0, 10.0, 0.0, 20.0,
+                                    ),
+                            })),
+                        },
+                        life_step_op: None,
+                        matrix: Matrix3::identity(),
+                    },
+                );
+                Some(id)
+            }
+            "cube3" => {
+                log::debug!("create_element: create cube3 {id}");
+
+                self.body_mp.insert(
+                    id,
+                    Body {
+                        class: format!("cube3"),
+                        look: BodyLook {
+                            ray_look: vec![],
+                            light_look: vec![],
+                            three_look: Some(ThreeLook::Body(Arc::new(
+                                self.device.create_buffer_init(&BufferInitDescriptor {
+                                    label: None,
+                                    contents: bytemuck::cast_slice(
+                                        drawer::structs::Body::cube(
+                                            Matrix4::new_translation(&vector![0.0, 0.0, -3.0])
+                                                * Matrix4::new_rotation(vector![
+                                                    0.0,
+                                                    -PI * 0.25,
+                                                    0.0
+                                                ]),
+                                            vector![1.0, 1.0, 1.0, 1.0],
+                                        )
+                                        .vertex_v(),
+                                    ),
+                                    usage: BufferUsages::VERTEX,
+                                }),
+                            ))),
                         },
                         life_step_op: None,
                         matrix: Matrix3::identity(),
@@ -472,22 +520,19 @@ impl VisionManager {
     }
 
     /// called => the result = a new render pass
-    pub fn render_pass(&mut self, watcher: &Watcher) -> RenderPass {
+    pub fn render_pass(&mut self, watcher: &Watcher) -> err::Result<RenderPass> {
         self.ray_drawer.update_watcher(&self.device, watcher);
-
         // Let the surface be drew.
-        let output = self.surface.get_current_texture().unwrap();
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        let id_v = Vec::new();
+        let output = self
+            .surface
+            .get_current_texture()
+            .change_context(err::Error::Other)?;
 
-        RenderPass {
+        Ok(RenderPass {
             vm: self,
             output,
-            view,
-            id_v,
-        }
+            id_v: Vec::new(),
+        })
     }
 }
 

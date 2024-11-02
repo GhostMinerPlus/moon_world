@@ -62,19 +62,32 @@ fn main() {
         let look_v = vec![
             ThreeLook::Light(Light {
                 color: vector![1.0, 1.0, 1.0, 1.0],
-                matrix: Matrix4::identity(),
-            }),
-            ThreeLook::Light(Light {
-                color: vector![1.0, 1.0, 1.0, 1.0],
-                matrix: Matrix4::identity(),
+                view: Matrix4::new_translation(&vector![0.0, 5.0, 0.0])
+                    * Matrix4::new_rotation(vector![PI * 0.25, 0.0, 0.0]),
+                proj: drawer::WGPU_OFFSET_M
+                    * Matrix4::new_orthographic(-10.0, 10.0, -10.0, 10.0, 0.0, 20.0),
             }),
             ThreeLook::Body(Arc::new(
                 device.create_buffer_init(&BufferInitDescriptor {
                     label: None,
                     contents: bytemuck::cast_slice(
                         drawer::structs::Body::cube(
-                            Matrix4::new_translation(&vector![0.0, 0.0, -2.0])
-                                * Matrix4::new_rotation(vector![0.0, PI * 0.25, 0.0]),
+                            Matrix4::new_translation(&vector![0.0, 0.0, -3.0])
+                                * Matrix4::new_rotation(vector![0.0, -PI * 0.25, 0.0]),
+                            vector![1.0, 1.0, 1.0, 1.0],
+                        )
+                        .vertex_v(),
+                    ),
+                    usage: BufferUsages::VERTEX,
+                }),
+            )),
+            ThreeLook::Body(Arc::new(
+                device.create_buffer_init(&BufferInitDescriptor {
+                    label: None,
+                    contents: bytemuck::cast_slice(
+                        drawer::structs::Body::cube(
+                            Matrix4::new_translation(&vector![0.0, 1.0, -3.0])
+                                * Matrix4::new_rotation(vector![0.0, -PI * 0.45, 0.0]),
                             vector![1.0, 1.0, 1.0, 1.0],
                         )
                         .vertex_v(),
@@ -114,4 +127,28 @@ fn main() {
             },
         );
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::f32::consts::PI;
+
+    use nalgebra::{vector, Matrix4, Vector4};
+
+    fn reverse_vec_from_mat(v: Vector4<f32>, m: Matrix4<f32>) -> Vector4<f32> {
+        let ox = m * vector![1.0, 0.0, 0.0, 0.0];
+        let oy = m * vector![0.0, 1.0, 0.0, 0.0];
+        let oz = m * vector![0.0, 0.0, 1.0, 0.0];
+
+        return vector![v.dot(&ox), v.dot(&oy), v.dot(&oz), 0.0];
+    }
+
+    #[test]
+    fn test() {
+        let m = Matrix4::new_translation(&vector![0.0, 10.0, 10.0])
+            * Matrix4::new_rotation(vector![0.0, PI * 0.25, 0.0]);
+        let v = vector![0.0, 0.0, -1.0, 0.0];
+
+        println!("{}", reverse_vec_from_mat(v, m).normalize());
+    }
 }

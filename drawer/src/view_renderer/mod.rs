@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use nalgebra::Matrix4;
 use wgpu::{
-    util::{BufferInitDescriptor, DeviceExt}, BindGroupLayout, Buffer, BufferUsages, Color, DepthBiasState, DepthStencilState, Device, Extent3d, Operations, Queue, RenderPassDepthStencilAttachment, RenderPipeline, StencilState, Texture, TextureDescriptor, TextureFormat, TextureUsages
+    util::{BufferInitDescriptor, DeviceExt},
+    BindGroupLayout, Buffer, BufferUsages, Color, DepthBiasState, DepthStencilState, Device,
+    Extent3d, Operations, Queue, RenderPassDepthStencilAttachment, RenderPipeline, StencilState,
+    Texture, TextureDescriptor, TextureFormat, TextureUsages,
 };
 
 use crate::{pipeline, structs::Point3Input};
@@ -90,6 +93,11 @@ impl ViewRenderer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: TextureFormat::Depth32Float,
+            #[cfg(test)]
+            usage: TextureUsages::TEXTURE_BINDING
+                | TextureUsages::RENDER_ATTACHMENT
+                | TextureUsages::COPY_SRC,
+            #[cfg(not(test))]
             usage: TextureUsages::TEXTURE_BINDING | TextureUsages::RENDER_ATTACHMENT,
             view_formats: &[],
         });
@@ -109,7 +117,7 @@ impl ViewRenderer {
         mv: &Matrix4<f32>,
         proj: &Matrix4<f32>,
         body_v: &[Arc<Buffer>],
-    ) -> (&Texture, &Texture) {
+    ) -> &Texture {
         let mv_buf = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
             contents: bytemuck::cast_slice(mv.as_slice()),
@@ -185,15 +193,15 @@ impl ViewRenderer {
 
         queue.submit(std::iter::once(encoder.finish()));
 
-        (&self.view_texture, &self.depth_texture)
+        &self.view_texture
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{f32::consts::PI, sync::Arc};
 
-    use crate::structs;
+    use crate::{structs, WGPU_OFFSET_M};
     use nalgebra::{vector, Matrix4};
     use wgpu::{
         util::{BufferInitDescriptor, DeviceExt},
@@ -247,12 +255,12 @@ mod tests {
                 device.create_buffer_init(&BufferInitDescriptor {
                     label: None,
                     contents: bytemuck::cast_slice(
-                        &structs::Body::cube(
-                            Matrix4::new_translation(&vector![0.0, 0.0, -5.0])
-                                * Matrix4::new_rotation(vector![0.0, 1.0, 0.0]),
+                        structs::Body::cube(
+                            Matrix4::new_translation(&vector![0.0, 0.0, -2.0])
+                                * Matrix4::new_rotation(vector![0.0, PI * 0.25, 0.0]),
                             vector![1.0, 1.0, 1.0, 1.0],
                         )
-                        .vertex_v()[0..24],
+                        .vertex_v(),
                     ),
                     usage: BufferUsages::VERTEX,
                 }),
@@ -262,9 +270,27 @@ mod tests {
                 &device,
                 &queue,
                 &Matrix4::identity(),
-                &Matrix4::new_perspective(1.0, 120.0, 0.1, 500.0),
+                &(WGPU_OFFSET_M * Matrix4::new_perspective(1.0, PI * 0.6, 0.1, 500.0)),
                 &look_v,
             );
         })
+    }
+
+    #[test]
+    fn test_perspective() {
+        let proj = WGPU_OFFSET_M * Matrix4::new_perspective(1.0, PI * 0.6, 0.1, 500.0);
+
+        let v_pos = proj * vector![1.0, 1.0, -3.0, 1.0];
+
+        println!("{}", v_pos);
+    }
+
+    #[test]
+    fn test_orthographic() {
+        let proj = WGPU_OFFSET_M * Matrix4::new_orthographic(-1.0, 1.0, -1.0, 1.0, 0.1, 500.0);
+
+        let v_pos = proj * vector![0.0, 0.0, -400.0, 1.0];
+
+        println!("{}", v_pos);
     }
 }

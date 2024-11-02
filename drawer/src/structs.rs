@@ -149,9 +149,9 @@ impl Body {
             let oy = p_y - p_o;
 
             let r_m = if cur_is_up {
-                Matrix4::new_rotation_wrt_point(-ox * 0.5 * PI, p_o)
+                Matrix4::new_rotation_wrt_point(ox * 0.5 * PI, p_o)
             } else {
-                Matrix4::new_rotation_wrt_point(-oy * 0.5 * PI, p_x)
+                Matrix4::new_rotation_wrt_point(oy * 0.5 * PI, p_x)
             };
             let rt_m = if cur_is_up {
                 Matrix4::new_translation(&oy) * r_m

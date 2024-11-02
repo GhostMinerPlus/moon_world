@@ -21,9 +21,9 @@ mod inner {
         bind_group_layout: &BindGroupLayout,
         view_buf: &Buffer,
         proj_buf: &Buffer,
-        light_buf: &Buffer,
+        light_v_buf: &Buffer,
+        light_p_buf: &Buffer,
         view_texture: &TextureView,
-        depth_texture: &TextureView,
         light_texture: &TextureView,
         light_depth_tex: &TextureView,
     ) {
@@ -79,27 +79,27 @@ mod inner {
                     },
                     wgpu::BindGroupEntry {
                         binding: 2,
-                        resource: light_buf.as_entire_binding(),
+                        resource: light_v_buf.as_entire_binding(),
                     },
                     // view_tex
                     wgpu::BindGroupEntry {
                         binding: 3,
                         resource: wgpu::BindingResource::TextureView(view_texture),
                     },
-                    // depth_tex
-                    wgpu::BindGroupEntry {
-                        binding: 4,
-                        resource: wgpu::BindingResource::TextureView(depth_texture),
-                    },
                     // light_tex
                     wgpu::BindGroupEntry {
-                        binding: 5,
+                        binding: 4,
                         resource: wgpu::BindingResource::TextureView(light_texture),
                     },
                     // light_depth_tex
                     wgpu::BindGroupEntry {
-                        binding: 6,
+                        binding: 5,
                         resource: wgpu::BindingResource::TextureView(light_depth_tex),
+                    },
+                    // light_p
+                    wgpu::BindGroupEntry {
+                        binding: 6,
+                        resource: light_p_buf.as_entire_binding(),
                     },
                 ],
                 label: None,
@@ -144,7 +144,7 @@ impl BodyRenderer {
                     },
                     count: None,
                 },
-                // light
+                // light_v
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
                     visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
@@ -166,23 +166,12 @@ impl BodyRenderer {
                     },
                     count: None,
                 },
-                // view_depth_tex
+                // light_tex
                 wgpu::BindGroupLayoutEntry {
                     binding: 4,
                     visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Depth,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                // light_tex
-                wgpu::BindGroupLayoutEntry {
-                    binding: 5,
-                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
                         view_dimension: wgpu::TextureViewDimension::D2,
                         multisampled: false,
                     },
@@ -190,12 +179,23 @@ impl BodyRenderer {
                 },
                 // light_depth_tex
                 wgpu::BindGroupLayoutEntry {
-                    binding: 6,
+                    binding: 5,
                     visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Depth,
                         view_dimension: wgpu::TextureViewDimension::D2,
                         multisampled: false,
+                    },
+                    count: None,
+                },
+                // light_p
+                wgpu::BindGroupLayoutEntry {
+                    binding: 6,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
                     },
                     count: None,
                 },
@@ -234,7 +234,6 @@ impl BodyRenderer {
         queue: &Queue,
         surface: &TextureView,
         view_texture: &Texture,
-        depth_texture: &Texture,
         light_texture_v: Vec<(&Light, (Texture, Texture))>,
         view_m: &Matrix4<f32>,
         proj_m: &Matrix4<f32>,
@@ -256,15 +255,14 @@ impl BodyRenderer {
             .iter()
             .map(|(light, (color_tex, depth_tex))| {
                 (
-                    &light.matrix,
+                    (&light.view, &light.proj),
                     (
                         color_tex.create_view(&TextureViewDescriptor::default()),
                         depth_tex.create_view(&TextureViewDescriptor::default()),
                     ),
                 )
             })
-            .collect::<Vec<(&Matrix4<f32>, (TextureView, TextureView))>>();
-        let depth_texture_view = depth_texture.create_view(&TextureViewDescriptor::default());
+            .collect::<Vec<((&Matrix4<f32>, &Matrix4<f32>), (TextureView, TextureView))>>();
         let view_texture_view = view_texture.create_view(&TextureViewDescriptor::default());
 
         {
@@ -285,10 +283,16 @@ impl BodyRenderer {
 
             render_pass.set_pipeline(&self.render_pipeline);
 
-            for (light_m, (color_texture_view, depth_tex_view)) in &light_texture_view_v {
-                let light_buf = device.create_buffer_init(&BufferInitDescriptor {
+            for ((light_v, light_p), (color_texture_view, depth_tex_view)) in &light_texture_view_v
+            {
+                let light_v_buf = device.create_buffer_init(&BufferInitDescriptor {
                     label: None,
-                    contents: bytemuck::cast_slice(light_m.data.as_slice()),
+                    contents: bytemuck::cast_slice(light_v.data.as_slice()),
+                    usage: BufferUsages::UNIFORM,
+                });
+                let light_p_buf = device.create_buffer_init(&BufferInitDescriptor {
+                    label: None,
+                    contents: bytemuck::cast_slice(light_p.data.as_slice()),
                     usage: BufferUsages::UNIFORM,
                 });
 
@@ -298,9 +302,9 @@ impl BodyRenderer {
                     &self.bind_group_layout,
                     &view_buf,
                     &proj_buf,
-                    &light_buf,
+                    &light_v_buf,
+                    &light_p_buf,
                     &view_texture_view,
-                    &depth_texture_view,
                     color_texture_view,
                     depth_tex_view,
                 );

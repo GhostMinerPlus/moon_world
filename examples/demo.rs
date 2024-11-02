@@ -11,6 +11,7 @@ use error_stack::ResultExt;
 use moon_world::{err, EngineBuilder};
 use winit::{
     application::ApplicationHandler,
+    dpi::PhysicalSize,
     event::WindowEvent,
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     window::{Window, WindowId},
@@ -44,7 +45,9 @@ impl ApplicationHandler for Application {
         unsafe {
             WINDOW_OP = Some(
                 event_loop
-                    .create_window(Window::default_attributes())
+                    .create_window(
+                        Window::default_attributes().with_inner_size(PhysicalSize::new(1024, 1024)),
+                    )
                     .unwrap(),
             )
         };
@@ -64,24 +67,16 @@ impl ApplicationHandler for Application {
                 dm.set(
                     &Path::from_str("Main->$w:view"),
                     vec![
-                        format!("$->$:state->$:pos if $->$:state->$:pos $->$:props->$:pos"),
                         //
                         format!("$->$:root = ? _"),
-                        format!("$->$:phy_ball = ? _"),
-                        format!("$->$:vi_ball = ? _"),
+                        format!("$->$:light3 = ? _"),
+                        format!("$->$:cube3 = ? _"),
                         //
-                        format!("$->$:phy_ball->$:class = Physics:ball _"),
-                        format!("$->$:phy_ball->$:props = ? _"),
-                        format!("$->$:vi_ball->$:class = Vision:ball _"),
-                        format!("$->$:vi_ball->$:props = ? _"),
+                        format!("$->$:light3->$:class = Vision:light3 _"),
+                        format!("$->$:cube3->$:class = Vision:cube3 _"),
                         format!("$->$:root->$:class = div _"),
-                        format!("$->$:root->$:child = $->$:phy_ball _"),
-                        format!("$->$:root->$:child += $->$:root->$:child $->$:vi_ball"),
-                        //
-                        format!("$->$:phy_ball->$:props->$:onstep = '$->$:state->$:pos\\s$world2_get_pos\\s$->$:vnode_id\\s_' _"),
-                        format!("$->$:phy_ball->$:props->$:watcher = true _"),
-                        format!("$->$:phy_ball->$:props->$:pos = $->$:state->$:pos _"),
-                        format!("$->$:vi_ball->$:props->$:pos = $->$:state->$:pos _"),
+                        format!("$->$:root->$:child = $->$:light3 _"),
+                        format!("$->$:root->$:child += $->$:root->$:child $->$:cube3"),
                         //
                         format!("$->$:output dump $->$:root $"),
                     ],
@@ -94,16 +89,13 @@ impl ApplicationHandler for Application {
                     while let Ok(event) = rx.try_recv() {
                         let entry_name = event["entry_name"].as_str().unwrap();
                         let event = &event["event"];
-                        if let Err(e) = engine.event_handler(entry_name, event).await {
-                            log::error!("{e:?}\nat event_handler");
-                        }
+
+                        engine.event_handler(entry_name, event).await.unwrap();
                     }
-                    if let Err(e) = engine.step().await {
-                        log::error!("{e:?}\nat step");
-                    }
-                    if let Err(e) = engine.render() {
-                        log::error!("{e:?}\nat render");
-                    }
+
+                    engine.step().await.unwrap();
+
+                    engine.render().unwrap();
                 }
             });
         });
@@ -131,7 +123,7 @@ impl ApplicationHandler for Application {
 
 fn main() {
     env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("warn,demo=debug,world2=debug"),
+        env_logger::Env::default().default_filter_or("info,wgpu=warn,demo=debug,moon_world=debug"),
     )
     .init();
 

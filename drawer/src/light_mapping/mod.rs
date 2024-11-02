@@ -3,8 +3,8 @@ use std::sync::Arc;
 use nalgebra::Matrix4;
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    BindGroupLayout, Buffer, BufferUsages, DepthBiasState, DepthStencilState, Device, Extent3d,
-    Queue, RenderPassDepthStencilAttachment, RenderPipeline, StencilState, Texture,
+    BindGroupLayout, Buffer, BufferUsages, Color, DepthBiasState, DepthStencilState, Device,
+    Extent3d, Queue, RenderPassDepthStencilAttachment, RenderPipeline, StencilState, Texture,
     TextureDescriptor, TextureFormat, TextureUsages,
 };
 
@@ -15,11 +15,10 @@ use super::pipeline;
 pub struct LightMappingBuilder {
     render_pipeline: RenderPipeline,
     bind_group_layout: BindGroupLayout,
-    format: TextureFormat,
 }
 
 impl LightMappingBuilder {
-    pub fn new(device: &Device, format: TextureFormat) -> Self {
+    pub fn new(device: &Device) -> Self {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
@@ -46,8 +45,8 @@ impl LightMappingBuilder {
                 label: Some("Light Mapping Shader"),
                 source: wgpu::ShaderSource::Wgsl(include_str!("shader/light_mapping.wgsl").into()),
             }),
-            &[Point3Input::pos_only_desc()],
-            format,
+            &[Point3Input::desc()],
+            TextureFormat::Rgba32Float,
             wgpu::PrimitiveTopology::TriangleList,
             Some(DepthStencilState {
                 format: TextureFormat::Depth32Float,
@@ -61,7 +60,6 @@ impl LightMappingBuilder {
         Self {
             render_pipeline,
             bind_group_layout,
-            format,
         }
     }
 
@@ -91,7 +89,7 @@ impl LightMappingBuilder {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: self.format,
+            format: TextureFormat::Rgba32Float,
             usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
@@ -106,7 +104,12 @@ impl LightMappingBuilder {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: TextureFormat::Depth32Float,
-            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_SRC,
+            #[cfg(not(test))]
+            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+            #[cfg(test)]
+            usage: TextureUsages::RENDER_ATTACHMENT
+                | TextureUsages::TEXTURE_BINDING
+                | TextureUsages::COPY_SRC,
             view_formats: &[],
         });
 
@@ -120,7 +123,7 @@ impl LightMappingBuilder {
                     view: &color_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
+                        load: wgpu::LoadOp::Clear(Color::TRANSPARENT),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -167,12 +170,11 @@ impl LightMappingBuilder {
 
 #[cfg(test)]
 mod tests {
-    use std::{sync::mpsc::channel, time::Duration};
+    use std::f32::consts::PI;
 
     use nalgebra::{vector, Matrix4};
-    use wgpu::{BufferDescriptor, ImageCopyBuffer, ImageDataLayout};
 
-    use crate::Light;
+    use crate::{save_texture, structs, Light, WGPU_OFFSET_M};
 
     use super::*;
 
@@ -183,18 +185,21 @@ mod tests {
                 .is_test(true)
                 .try_init();
 
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
-        let light = Light {
-            color: vector![1.0, 1.0, 1.0, 1.0],
-            matrix: Matrix4::identity(),
-        };
-        let (tx, rx) = channel::<bool>();
         let rt = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
             .unwrap();
 
         rt.block_on(async move {
+            let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
+            let light = Light {
+                color: vector![1.0, 1.0, 1.0, 1.0],
+                view: Matrix4::new_translation(&vector![0.0, 2.5, 0.0])
+                    * Matrix4::new_rotation(vector![PI * 0.25, 0.0, 0.0]),
+                proj: WGPU_OFFSET_M
+                    * Matrix4::new_orthographic(-10.0, 10.0, -10.0, 10.0, 0.0, 500.0),
+            };
+
             let adapter = instance
                 .request_adapter(&wgpu::RequestAdapterOptions {
                     power_preference: wgpu::PowerPreference::default(),
@@ -207,7 +212,8 @@ mod tests {
             let (device, queue) = adapter
                 .request_device(
                     &wgpu::DeviceDescriptor {
-                        required_features: wgpu::Features::MAPPABLE_PRIMARY_BUFFERS,
+                        required_features: wgpu::Features::MAPPABLE_PRIMARY_BUFFERS
+                            | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
                         // WebGL doesn't support all of wgpu's features, so if
                         // we're building for the web we'll have to disable some.
                         required_limits: wgpu::Limits::default(),
@@ -219,80 +225,46 @@ mod tests {
                 .await
                 .unwrap();
 
-            let lm_builder = LightMappingBuilder::new(&device, TextureFormat::Rgba8Unorm);
-            let body_v = vec![Arc::new(device.create_buffer_init(&BufferInitDescriptor {
-                label: None,
-                contents: bytemuck::cast_slice(&[
-                    Point3Input {
-                        position: [0.0, 0.0, 0.5, 1.0],
-                        color: [1.0, 1.0, 1.0, 1.0],
-                        normal: [0.0, 0.0, 1.0, 0.0],
-                    },
-                    Point3Input {
-                        position: [1.0, 0.0, 0.5, 1.0],
-                        color: [1.0, 1.0, 1.0, 1.0],
-                        normal: [0.0, 0.0, 1.0, 0.0],
-                    },
-                    Point3Input {
-                        position: [0.0, 1.0, 0.5, 1.0],
-                        color: [1.0, 1.0, 1.0, 1.0],
-                        normal: [0.0, 0.0, 1.0, 0.0],
-                    },
-                ]),
-                usage: BufferUsages::VERTEX,
-            }))];
-            let mut encoder =
-                device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+            let lm_builder = LightMappingBuilder::new(&device);
+            let body_v = vec![Arc::new(
+                device.create_buffer_init(&BufferInitDescriptor {
+                    label: None,
+                    contents: bytemuck::cast_slice(
+                        structs::Body::cube(
+                            Matrix4::new_translation(&vector![0.0, 0.0, -3.0])
+                                * Matrix4::new_rotation(vector![0.0, -PI * 0.25, 0.0]),
+                            vector![1.0, 1.0, 1.0, 1.0],
+                        )
+                        .vertex_v(),
+                    ),
+                    usage: BufferUsages::VERTEX,
+                }),
+            )];
 
-            let (_, depth_tex) = lm_builder.light_mapping(&device, &queue, &light.matrix, &body_v);
+            let (_, depth_texture) =
+                lm_builder.light_mapping(&device, &queue, &(light.proj * light.view), &body_v);
 
-            let buffer = device.create_buffer(&BufferDescriptor {
-                label: None,
-                size: (depth_tex.width() * depth_tex.height() * 4) as u64,
-                usage: BufferUsages::COPY_DST | BufferUsages::MAP_READ,
-                mapped_at_creation: false,
-            });
-            encoder.copy_texture_to_buffer(
-                depth_tex.as_image_copy(),
-                ImageCopyBuffer {
-                    buffer: &buffer,
-                    layout: ImageDataLayout {
-                        offset: 0,
-                        bytes_per_row: Some(depth_tex.width() * 4),
-                        rows_per_image: None,
-                    },
+            save_texture(
+                &device,
+                &queue,
+                &depth_texture,
+                "light_depth.png",
+                4,
+                |c, r, buf| {
+                    let offset = ((r * depth_texture.width() + c) * 4) as usize;
+
+                    let depth = f32::from_ne_bytes([
+                        buf[offset],
+                        buf[offset + 1],
+                        buf[offset + 2],
+                        buf[offset + 3],
+                    ]);
+
+                    let lightness = ((1.0 - depth) * 256.0) as u8;
+
+                    image::Rgba([lightness, lightness, lightness, 255])
                 },
-                depth_tex.size(),
             );
-
-            queue.submit(std::iter::once(encoder.finish()));
-
-            buffer.slice(..).map_async(wgpu::MapMode::Read, move |rs| {
-                if let Err(e) = rs {
-                    log::error!("{e:?}");
-                    let _ = tx.send(false);
-                } else {
-                    let _ = tx.send(true);
-                }
-            });
-
-            device.poll(wgpu::MaintainBase::Wait).panic_on_timeout();
-
-            if !rx.recv_timeout(Duration::from_secs(3)).unwrap() {
-                panic!("texture data is invalid!");
-            }
-
-            log::info!("mapped");
-
-            let buf_view = buffer.slice(..).get_mapped_range();
-
-            let b = buf_view[(511 * depth_tex.width() as usize + 512) * 4];
-
-            drop(buf_view);
-
-            buffer.unmap();
-
-            assert_ne!(b, 0);
         });
     }
 }

@@ -93,7 +93,8 @@ pub enum ThreeLook {
 
 pub struct Light {
     pub color: Vector4<f32>,
-    pub matrix: Matrix4<f32>,
+    pub view: Matrix4<f32>,
+    pub proj: Matrix4<f32>,
 }
 
 pub struct RayDrawer {
@@ -565,7 +566,7 @@ pub struct ThreeDrawer {
 
 impl ThreeDrawer {
     pub fn new(device: &Device, format: TextureFormat, proj_m: Matrix4<f32>) -> Self {
-        let light_mapping_builder = light_mapping::LightMappingBuilder::new(device, format);
+        let light_mapping_builder = light_mapping::LightMappingBuilder::new(device);
         let body_renderer = body_render::BodyRenderer::new(device, format);
         let view_renderer = view_renderer::ViewRenderer::new(device);
 
@@ -604,14 +605,14 @@ impl ThreeDrawer {
                     self.light_mapping_builder.light_mapping(
                         device,
                         queue,
-                        &light.matrix,
+                        &(light.proj * light.view),
                         &body_buffer_v,
                     ),
                 )
             })
             .collect::<Vec<(&Light, (Texture, Texture))>>();
         // color and depth of view
-        let (view_texture, depth_texture) = self.view_renderer.view_renderer(
+        let view_texture = self.view_renderer.view_renderer(
             device,
             queue,
             &self.view_m,
@@ -624,7 +625,6 @@ impl ThreeDrawer {
             queue,
             surface,
             view_texture,
-            depth_texture,
             light_texture_v,
             &self.view_m,
             &self.proj_m,

@@ -4,7 +4,7 @@ use drawer::{light_mapping::LightMappingBuilder, save_texture, Light};
 use nalgebra::{vector, Matrix4};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    BufferUsages, TextureFormat,
+    BufferUsages,
 };
 
 fn main() {
@@ -13,7 +13,8 @@ fn main() {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
     let light = Light {
         color: vector![1.0, 1.0, 1.0, 1.0],
-        matrix: drawer::WGPU_OFFSET_M * Matrix4::new_orthographic(-1.0, 1.0, -1.0, 1.0, 0.0, 100.0),
+        view: Matrix4::identity(),
+        proj: drawer::WGPU_OFFSET_M * Matrix4::new_orthographic(-1.0, 1.0, -1.0, 1.0, 0.0, 100.0),
     };
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -45,7 +46,7 @@ fn main() {
             .await
             .unwrap();
 
-        let lm_builder = LightMappingBuilder::new(&device, TextureFormat::Rgba8Unorm);
+        let lm_builder = LightMappingBuilder::new(&device);
         let body_v = vec![Arc::new(
             device.create_buffer_init(&BufferInitDescriptor {
                 label: None,
@@ -61,7 +62,7 @@ fn main() {
             }),
         )];
 
-        let (_, depth_tex) = lm_builder.light_mapping(&device, &queue, &light.matrix, &body_v);
+        let (_, depth_tex) = lm_builder.light_mapping(&device, &queue, &light.view, &body_v);
 
         save_texture(
             &device,
