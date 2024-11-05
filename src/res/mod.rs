@@ -13,8 +13,7 @@ use nalgebra::{vector, Matrix3, Matrix4, Vector3};
 use rapier2d::prelude::{
     ColliderBuilder, IntegrationParameters, RigidBodyBuilder, RigidBodyHandle,
 };
-use rodio::{cpal::FromSample, OutputStream, Sample, Sink, Source};
-use view_manager::ViewProps;
+use view_manager::{AsElementProvider, ViewProps};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     BufferUsages, SurfaceTexture,
@@ -30,14 +29,11 @@ use super::{
 mod inner {
     use std::sync::mpsc::Sender;
 
-    use nalgebra::Point2;
     use rapier2d::prelude::{
         Collider, ContactForceEvent, EventHandler, RigidBody, RigidBodyHandle,
     };
 
-    use drawer::structs::{Line, LineIn};
-
-    use super::{PhysicsManager, VisionManager};
+    use super::PhysicsManager;
 
     pub struct InnerEventHandler {
         collision_sender: Sender<rapier2d::prelude::CollisionEvent>,
@@ -100,78 +96,6 @@ mod inner {
 
         body_handle
     }
-
-    pub fn gen_light_line_v(vision_manager: &VisionManager, id_v: &[u64]) -> Vec<LineIn> {
-        let mut line_v: Vec<LineIn> = Vec::new();
-        for id in id_v {
-            let body = &vision_manager.body_mp[id];
-            for light_look in &body.look.light_look {
-                if !light_look.is_visible {
-                    continue;
-                }
-                let matrix = body.matrix * light_look.shape_matrix;
-                let point_v = light_look
-                    .shape
-                    .point_v
-                    .iter()
-                    .map(|point| matrix.transform_point(point))
-                    .collect::<Vec<Point2<f32>>>();
-                if point_v.is_empty() {
-                    return line_v;
-                }
-                for i in 0..point_v.len() - 1 {
-                    let sp = point_v[i];
-                    let ep = point_v[i + 1];
-                    line_v.push(LineIn {
-                        position: [sp.x, sp.y],
-                        color: light_look.color.into(),
-                    });
-                    line_v.push(LineIn {
-                        position: [ep.x, ep.y],
-                        color: light_look.color.into(),
-                    });
-                }
-            }
-        }
-
-        line_v
-    }
-
-    pub fn gen_line_v(vision_manager: &VisionManager, id_v: &[u64]) -> Vec<Line> {
-        let mut line_v = Vec::new();
-        for id in id_v {
-            let body = &vision_manager.body_mp[id];
-            for ray_look in &body.look.ray_look {
-                if !ray_look.is_visible {
-                    continue;
-                }
-                let matrix = body.matrix * ray_look.shape_matrix;
-                let point_v = ray_look
-                    .shape
-                    .point_v
-                    .iter()
-                    .map(|point| matrix.transform_point(point))
-                    .collect::<Vec<Point2<f32>>>();
-                if point_v.is_empty() {
-                    continue;
-                }
-                for i in 0..point_v.len() - 1 {
-                    let sp = point_v[i];
-                    let ep = point_v[i + 1];
-                    line_v.push(Line {
-                        sp: sp.into(),
-                        ep: ep.into(),
-                        light: ray_look.light,
-                        color: ray_look.color.into(),
-                        roughness: ray_look.roughness,
-                        seed: ray_look.seed + i as f32,
-                        ..Default::default()
-                    });
-                }
-            }
-        }
-        line_v
-    }
 }
 
 pub struct PhysicsManager {
@@ -187,8 +111,8 @@ pub struct PhysicsManager {
 
 impl PhysicsManager {
     pub fn new(integration_parameters: IntegrationParameters) -> Self {
-        let (collision_sender, collision_event_rx) = channel();
-        let (force_sender, force_event_rx) = channel();
+        let (collision_sender, _collision_event_rx) = channel();
+        let (force_sender, _force_event_rx) = channel();
         let mut physics_engine = physics::PhysicsEngine::new(integration_parameters);
         physics_engine.set_event_handler(Box::new(inner::InnerEventHandler::new(
             collision_sender,
@@ -211,33 +135,35 @@ impl PhysicsManager {
     pub fn step(&mut self) {
         self.physics_engine.step();
     }
+}
 
-    /// Let element be updated.
-    pub fn create_element(&mut self, class: &str) -> Option<RigidBodyHandle> {
-        match class {
-            "ball" => Some(inner::add_body(
-                self,
-                RigidBodyBuilder::fixed().build(),
-                vec![ColliderBuilder::ball(1.0).build()],
-            )),
-            "quad" => Some(inner::add_body(
-                self,
-                RigidBodyBuilder::fixed().build(),
-                vec![ColliderBuilder::cuboid(0.5, 0.5).build()],
-            )),
-            _ => None,
+impl AsElementProvider for PhysicsManager {
+    type H = RigidBodyHandle;
+
+    fn update_element(&mut self, _: Self::H, props: &ViewProps) {
+        match props.class.as_str() {
+            _ => (),
         }
     }
 
     /// Let element be updated.
-    pub fn delete_element(&mut self, h: RigidBodyHandle) {
+    fn delete_element(&mut self, h: RigidBodyHandle) {
         self.physics_engine.remove_rigid_body(h);
     }
 
-    /// Let element be updated.
-    pub fn update_element(&mut self, h: RigidBodyHandle, props: &ViewProps) {
-        match props.class.as_str() {
-            _ => (),
+    fn create_element(&mut self, _: u64, class: &str) -> RigidBodyHandle {
+        match class {
+            "ball" => inner::add_body(
+                self,
+                RigidBodyBuilder::fixed().build(),
+                vec![ColliderBuilder::ball(1.0).build()],
+            ),
+            "quad" => inner::add_body(
+                self,
+                RigidBodyBuilder::fixed().build(),
+                vec![ColliderBuilder::cuboid(0.5, 0.5).build()],
+            ),
+            _ => panic!(""),
         }
     }
 }
@@ -318,19 +244,18 @@ impl<'a> RenderPass<'a> {
 }
 
 pub struct VisionManager {
+    config: wgpu::SurfaceConfiguration,
+
+    surface: wgpu::Surface<'static>,
+    pub device: wgpu::Device,
+    pub queue: wgpu::Queue,
+
     pub ray_drawer: drawer::RayDrawer,
     pub light_drawer: drawer::WathcerDrawer,
     pub three_drawer: drawer::ThreeDrawer,
     pub surface_drawer: drawer::SurfaceDrawer,
 
-    pub surface: wgpu::Surface<'static>,
-    pub device: wgpu::Device,
-    pub queue: wgpu::Queue,
-
     pub body_mp: HashMap<u64, Body>,
-
-    config: wgpu::SurfaceConfiguration,
-    unique_id: u64,
 }
 
 impl VisionManager {
@@ -359,7 +284,6 @@ impl VisionManager {
             config,
             surface,
             body_mp: HashMap::new(),
-            unique_id: 0,
         }
     }
 
@@ -374,17 +298,41 @@ impl VisionManager {
         }
     }
 
-    pub fn create_element(&mut self, class: &str) -> Option<u64> {
-        let id = self.unique_id;
+    /// called => the result = a new render pass
+    pub fn render_pass(&mut self, watcher: &Watcher) -> err::Result<RenderPass> {
+        self.ray_drawer.update_watcher(&self.device, watcher);
+        // Let the surface be drew.
+        let output = self
+            .surface
+            .get_current_texture()
+            .change_context(err::Error::Other)?;
 
-        self.unique_id += 1;
+        Ok(RenderPass {
+            vm: self,
+            output,
+            id_v: Vec::new(),
+        })
+    }
 
+    pub fn view_m(&self) -> &Matrix4<f32> {
+        self.three_drawer.view_m()
+    }
+
+    pub fn view_m_mut(&mut self) -> &mut Matrix4<f32> {
+        self.three_drawer.view_m_mut()
+    }
+}
+
+impl AsElementProvider for VisionManager {
+    type H = u64;
+
+    fn create_element(&mut self, vnode_id: u64, class: &str) -> u64 {
         match class {
             "ball" => {
-                log::debug!("create_element: create ball {id}");
+                log::debug!("create_element: create ball {vnode_id}");
 
                 self.body_mp.insert(
-                    id,
+                    vnode_id,
                     Body {
                         class: format!("ball"),
                         look: BodyLook {
@@ -400,17 +348,14 @@ impl VisionManager {
                             light_look: vec![],
                             three_look: None,
                         },
-                        life_step_op: None,
-                        matrix: Matrix3::identity(),
                     },
                 );
-                Some(id)
             }
             "light3" => {
-                log::debug!("create_element: create light3 {id}");
+                log::debug!("create_element: create light3 {vnode_id}");
 
                 self.body_mp.insert(
-                    id,
+                    vnode_id,
                     Body {
                         class: format!("light3"),
                         look: BodyLook {
@@ -426,17 +371,14 @@ impl VisionManager {
                                     ),
                             })),
                         },
-                        life_step_op: None,
-                        matrix: Matrix3::identity(),
                     },
                 );
-                Some(id)
             }
             "cube3" => {
-                log::debug!("create_element: create cube3 {id}");
+                log::debug!("create_element: create cube3 {vnode_id}");
 
                 self.body_mp.insert(
-                    id,
+                    vnode_id,
                     Body {
                         class: format!("cube3"),
                         look: BodyLook {
@@ -461,15 +403,12 @@ impl VisionManager {
                                 }),
                             ))),
                         },
-                        life_step_op: None,
-                        matrix: Matrix3::identity(),
                     },
                 );
-                Some(id)
             }
             "quad" => {
                 self.body_mp.insert(
-                    id,
+                    vnode_id,
                     Body {
                         class: format!("quad"),
                         look: BodyLook {
@@ -485,31 +424,30 @@ impl VisionManager {
                             light_look: vec![],
                             three_look: None,
                         },
-                        life_step_op: None,
-                        matrix: Matrix3::identity(),
                     },
                 );
-                Some(id)
             }
-            _ => None,
+            _ => (),
         }
+
+        vnode_id
     }
 
-    pub fn delete_element(&mut self, id: u64) {
+    fn delete_element(&mut self, id: u64) {
         self.body_mp.remove(&id);
     }
 
-    pub fn update_element(&mut self, id: u64, props: &ViewProps) {
+    fn update_element(&mut self, id: u64, props: &ViewProps) {
         if let Some(body) = self.body_mp.get_mut(&id) {
             match body.class.as_str() {
                 "ball" => {
-                    if let Some(radius) = props.props["$:radius"][0].as_str() {
+                    if let Some(radius) = props.props["$radius"][0].as_str() {
                         body.look.ray_look[0].shape_matrix =
                             Matrix3::new_scaling(radius.parse().unwrap());
                     }
                 }
                 "quad" => {
-                    if let Some(height) = props.props["$:height"][0].as_str() {
+                    if let Some(height) = props.props["$height"][0].as_str() {
                         body.look.ray_look[0].shape_matrix =
                             Matrix3::new_nonuniform_scaling(&vector![1.0, height.parse().unwrap()]);
                     }
@@ -518,29 +456,31 @@ impl VisionManager {
             }
         }
     }
+}
 
-    /// called => the result = a new render pass
-    pub fn render_pass(&mut self, watcher: &Watcher) -> err::Result<RenderPass> {
-        self.ray_drawer.update_watcher(&self.device, watcher);
-        // Let the surface be drew.
-        let output = self
-            .surface
-            .get_current_texture()
-            .change_context(err::Error::Other)?;
+pub struct InputProvider {}
 
-        Ok(RenderPass {
-            vm: self,
-            output,
-            id_v: Vec::new(),
-        })
+impl InputProvider {
+    pub fn new() -> Self {
+        Self {}
     }
 }
 
-pub struct AudioManager {}
+impl AsElementProvider for InputProvider {
+    type H = u64;
 
-impl AudioManager {
-    pub fn new() -> Self {
-        Self {}
+    fn update_element(&mut self, id: Self::H, props: &ViewProps) {
+        log::debug!("update_element: {id}")
+    }
+
+    fn delete_element(&mut self, id: Self::H) {
+        log::debug!("delete_element: {id}")
+    }
+
+    fn create_element(&mut self, vnode_id: u64, class: &str) -> Self::H {
+        log::debug!("create_element: vnode_id = {vnode_id}, class = {class}");
+
+        vnode_id
     }
 }
 
@@ -565,20 +505,5 @@ mod test_rodio {
         // The sound plays in a separate thread. This call will block the current thread until the sink
         // has finished playing all its queued sounds.
         sink.sleep_until_end();
-    }
-}
-
-impl AudioManager {
-    /// Mix a sound into this engine.
-    pub fn mix_sound<S>(&self, source: S) -> Sink
-    where
-        S: Source + Send + 'static,
-        f32: FromSample<S::Item>,
-        S::Item: Sample + Send,
-    {
-        let (_output_stream, output_stream_handle) = OutputStream::try_default().unwrap();
-        let sink = Sink::try_new(&output_stream_handle).unwrap();
-        sink.append(source);
-        sink
     }
 }

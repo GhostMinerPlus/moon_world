@@ -630,6 +630,14 @@ impl ThreeDrawer {
             &self.proj_m,
         )
     }
+
+    pub fn view_m(&self) -> &Matrix4<f32> {
+        &self.view_m
+    }
+
+    pub fn view_m_mut(&mut self) -> &mut Matrix4<f32> {
+        &mut self.view_m
+    }
 }
 
 pub fn save_texture(

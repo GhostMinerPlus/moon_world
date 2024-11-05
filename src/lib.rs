@@ -4,9 +4,8 @@ use drawer::structs::Watcher;
 
 use error_stack::ResultExt;
 use moon_class::{util::rs_2_str, AsClassManager, Fu};
-use nalgebra::{Matrix3, Vector2, Vector3};
-use rapier2d::prelude::{Collider, GenericJoint, IntegrationParameters, RigidBodyHandle};
-use view_manager::{AsViewManager, VNode, ViewProps};
+use rapier2d::prelude::{IntegrationParameters, RigidBodyHandle};
+use view_manager::{AsElementProvider, AsViewManager, VNode, ViewProps};
 
 use std::{collections::HashMap, future::Future, pin::Pin};
 use wgpu::{Instance, Surface};
@@ -51,10 +50,10 @@ mod inner {
                         .attach_printable("element with specified vnode_id not found!")?;
                     match ele {
                         super::AtomElement::Audio(_) => (),
-                        super::AtomElement::Physics(_) => (),
                         super::AtomElement::Vision(id) => {
                             rp.push_element(*id);
                         }
+                        _ => (),
                     }
                 }
             }
@@ -167,7 +166,6 @@ impl EngineBuilder {
 
         Ok(Engine::new(
             dm,
-            res::AudioManager::new(),
             res::PhysicsManager::new(IntegrationParameters::default()),
             res::VisionManager::new(
                 ray_drawer,
@@ -187,6 +185,7 @@ pub enum AtomElement {
     Audio(()),
     Physics(RigidBodyHandle),
     Vision(u64),
+    Input(u64),
 }
 
 /// stepped => time = next time
@@ -194,42 +193,37 @@ pub enum AtomElement {
 /// rendered => frame = next frame
 pub struct Engine {
     unique_id: u64,
-    time_stamp: u128,
     vnode_mp: HashMap<u64, VNode>,
     watcher_binding_body_id: u64,
     element_mp: HashMap<u64, AtomElement>,
-    element_index_mp: HashMap<String, HashMap<String, u64>>,
     watcher: Watcher,
 
     data_manager: Box<dyn AsClassManager>,
-    audio_manager: res::AudioManager,
     physics_manager: res::PhysicsManager,
     vision_manager: res::VisionManager,
+    input_provider: res::InputProvider,
 }
 
 impl Engine {
     /// called => the result = a new [Engine]
     pub async fn new(
         dm: Box<dyn AsClassManager>,
-        audio_manager: res::AudioManager,
         physics_manager: res::PhysicsManager,
         vision_manager: res::VisionManager,
     ) -> Self {
         let mut this = Self {
             unique_id: 0,
-            time_stamp: 0,
             vnode_mp: HashMap::new(),
             watcher_binding_body_id: 0,
             element_mp: HashMap::new(),
-            element_index_mp: HashMap::new(),
             watcher: Watcher {
                 position: [0.0, 0.0],
                 offset: [0.0, 0.0],
             },
             data_manager: dm,
-            audio_manager,
             physics_manager,
             vision_manager,
+            input_provider: res::InputProvider::new(),
         };
 
         let root_id = this.new_vnode(0);
@@ -248,22 +242,31 @@ impl Engine {
         this
     }
 
-    /// called => the event = handled
+    /// called => the event = handled[]
     pub async fn event_handler(
         &mut self,
         entry_name: &str,
-        event: &json::JsonValue,
+        data: &json::JsonValue,
     ) -> err::Result<()> {
-        match entry_name {
-            "onresize" => {
-                self.vision_manager.resize(PhysicalSize {
-                    width: event["width"].as_i32().unwrap() as u32,
-                    height: event["height"].as_i32().unwrap() as u32,
-                });
-                Ok(())
-            }
-            _ => Ok(()),
+        for id in self
+            .element_mp
+            .iter()
+            .filter(|(_, ele)| {
+                if let AtomElement::Input(_) = ele {
+                    return true;
+                }
+                false
+            })
+            .map(|(id, _)| *id)
+            .collect::<Vec<u64>>()
+        {
+            let _ = self
+                .event_entry(id, entry_name, data)
+                .await
+                .change_context(err::Error::Other)?;
         }
+
+        Ok(())
     }
 
     /// called => the engine = stepped
@@ -282,7 +285,7 @@ impl Engine {
             .map(|(id, _)| *id)
             .collect::<Vec<u64>>()
         {
-            let _ = self.event_entry(id, "$:onstep", json::Null).await;
+            let _ = self.event_entry(id, "$onstep", &json::Null).await;
         }
 
         if let Some(ele) = self.element_mp.get(&self.watcher_binding_body_id) {
@@ -306,68 +309,6 @@ impl Engine {
 
         rp.render()
     }
-
-    pub fn move_watcher(&mut self, offset: Vector2<f32>) {
-        self.physics_manager.watcher.offset[0] += offset.x;
-        self.physics_manager.watcher.offset[1] += offset.y;
-        self.vision_manager
-            .ray_drawer
-            .update_watcher(&self.vision_manager.device, &self.physics_manager.watcher);
-    }
-
-    /// Element generator, let the variable be id of the new element which consists of physics, vision and audio.
-    pub fn create_element(&mut self, id: u64, class: &str) {
-        let atom_element = if class.starts_with("Physics:") {
-            AtomElement::Physics(
-                self.physics_manager
-                    .create_element(&class["Physics:".len()..])
-                    .unwrap(),
-            )
-        } else if class.starts_with("Vision:") {
-            AtomElement::Vision(
-                self.vision_manager
-                    .create_element(&class["Vision:".len()..])
-                    .unwrap(),
-            )
-        } else {
-            return;
-        };
-        self.element_mp.insert(id, atom_element);
-    }
-
-    /// Let the element specified by the id be deleted.
-    pub fn delete_element(&mut self, id: u64) {
-        if let Some(atom_ele) = self.element_mp.remove(&id) {
-            match atom_ele {
-                AtomElement::Audio(_) => todo!(),
-                AtomElement::Physics(rigid_body_handle) => {
-                    self.physics_manager.delete_element(rigid_body_handle)
-                }
-                AtomElement::Vision(id) => self.vision_manager.delete_element(id),
-            }
-        }
-    }
-
-    /// Let the element specified by the id be updated by this props.
-    pub fn update_element(&mut self, id: u64, props: &ViewProps) {
-        if let Some(atom_ele) = self.element_mp.get_mut(&id) {
-            match atom_ele {
-                AtomElement::Audio(_) => todo!(),
-                AtomElement::Physics(rigid_body_handle) => {
-                    self.physics_manager
-                        .update_element(*rigid_body_handle, props);
-                    if let Some(watcher) = props.props["$:watcher"][0].as_str() {
-                        if watcher == "true" {
-                            self.watcher_binding_body_id = id;
-                        }
-                    }
-                }
-                AtomElement::Vision(id) => {
-                    self.vision_manager.update_element(*id, props);
-                }
-            }
-        }
-    }
 }
 
 impl AsClassManager for Engine {
@@ -382,7 +323,29 @@ impl AsClassManager for Engine {
         'a1: 'f,
         'a2: 'f,
     {
-        self.data_manager.append(class, source, item_v)
+        Box::pin(async move {
+            log::debug!("append: {} = {class}[{source}]", item_v[0]);
+
+            if class.starts_with('@') {
+                if class == "@new_size" && source == "@window" {
+                    let width_v = self.get("@width", &item_v[0]).await?;
+                    let height_v = self.get("@height", &item_v[0]).await?;
+
+                    self.vision_manager.resize(PhysicalSize {
+                        width: width_v[0].parse::<u32>().unwrap(),
+                        height: height_v[0].parse::<u32>().unwrap(),
+                    });
+
+                    Ok(())
+                } else {
+                    self.data_manager.clear(class, source).await?;
+
+                    self.data_manager.append(class, source, item_v).await
+                }
+            } else {
+                self.data_manager.append(class, source, item_v).await
+            }
+        })
     }
 
     fn clear<'a, 'a1, 'a2, 'f>(
@@ -441,6 +404,71 @@ impl AsClassManager for Engine {
     }
 }
 
+impl AsElementProvider for Engine {
+    type H = u64;
+
+    /// Element generator, let the variable be id of the new element which consists of physics, vision and audio.
+    fn create_element(&mut self, vnode_id: u64, class: &str) -> u64 {
+        let (prefix, suffix) = match class.find(':') {
+            Some(pos) => (&class[0..pos], &class[pos + 1..]),
+            None => ("", class),
+        };
+
+        let atom_element = match prefix {
+            "Physics" => {
+                AtomElement::Physics(self.physics_manager.create_element(vnode_id, suffix))
+            }
+            "Vision" => AtomElement::Vision(self.vision_manager.create_element(vnode_id, suffix)),
+            "Input" => AtomElement::Input(self.input_provider.create_element(vnode_id, suffix)),
+            _ => {
+                return vnode_id;
+            }
+        };
+
+        self.element_mp.insert(vnode_id, atom_element);
+
+        vnode_id
+    }
+
+    /// Let the element specified by the id be deleted.
+    fn delete_element(&mut self, id: u64) {
+        if let Some(atom_ele) = self.element_mp.remove(&id) {
+            match atom_ele {
+                AtomElement::Audio(_) => todo!(),
+                AtomElement::Physics(rigid_body_handle) => {
+                    self.physics_manager.delete_element(rigid_body_handle)
+                }
+                AtomElement::Vision(id) => self.vision_manager.delete_element(id),
+                AtomElement::Input(id) => self.input_provider.delete_element(id),
+            }
+        }
+    }
+
+    /// Let the element specified by the id be updated by this props.
+    fn update_element(&mut self, id: u64, props: &ViewProps) {
+        if let Some(atom_ele) = self.element_mp.get_mut(&id) {
+            match atom_ele {
+                AtomElement::Audio(_) => todo!(),
+                AtomElement::Physics(rigid_body_handle) => {
+                    self.physics_manager
+                        .update_element(*rigid_body_handle, props);
+                    if let Some(watcher) = props.props["$watcher"][0].as_str() {
+                        if watcher == "true" {
+                            self.watcher_binding_body_id = id;
+                        }
+                    }
+                }
+                AtomElement::Vision(id) => {
+                    self.vision_manager.update_element(*id, props);
+                }
+                AtomElement::Input(id) => {
+                    self.input_provider.update_element(*id, props);
+                }
+            }
+        }
+    }
+}
+
 impl AsViewManager for Engine {
     fn get_class_view<'a, 'a1, 'f>(
         &'a self,
@@ -477,17 +505,5 @@ impl AsViewManager for Engine {
 
     fn rm_vnode(&mut self, id: u64) -> Option<VNode> {
         self.vnode_mp.remove(&id)
-    }
-
-    fn on_update_vnode_props(&mut self, id: u64, props: &ViewProps) {
-        // Let the element be usable.
-        if self.get_vnode(&id).unwrap().view_props.class != props.class {
-            self.delete_element(id);
-
-            self.create_element(id, &props.class);
-        }
-
-        // Let the element be updated.
-        self.update_element(id, props);
     }
 }

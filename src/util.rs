@@ -36,8 +36,6 @@ pub struct BodyCollider {
 pub struct Body {
     pub class: String,
     pub look: BodyLook,
-    pub life_step_op: Option<u64>,
-    pub matrix: Matrix3<f32>,
 }
 
 pub struct Joint {

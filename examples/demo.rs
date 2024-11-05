@@ -72,12 +72,16 @@ impl ApplicationHandler for Application {
                                 "div = $class[root];
                                 Vision:light3 = $class[light3];
                                 Vision:cube3 = $class[cube3];
-
+                                Input:window = $class[window];
                                 cube3 = $child[root];
                                 light3 = $child[root];
+                                window = $child[root];
+                                ? = $props[window];
+                                '$data[] = @new_size[@window];' = $onresize[$props[window]];
 
                                 $class = $class[];
                                 $props = $class[];
+                                $onresize = $class[];
                                 $child = $class[];
                                 root = $source[];
                                 dump[] = $result[];"
@@ -92,9 +96,9 @@ impl ApplicationHandler for Application {
                 loop {
                     while let Ok(event) = rx.try_recv() {
                         let entry_name = event["entry_name"].as_str().unwrap();
-                        let event = &event["event"];
+                        let data = &event["data"];
 
-                        engine.event_handler(entry_name, event).await.unwrap();
+                        engine.event_handler(entry_name, data).await.unwrap();
                     }
 
                     engine.step().await.unwrap();
@@ -113,10 +117,22 @@ impl ApplicationHandler for Application {
             }
             WindowEvent::Resized(n_sz) => {
                 let _ = self.tx_op.as_ref().unwrap().send(json::object! {
-                    "entry_name": "onresize",
-                    "event": {
-                        "width": n_sz.width,
-                        "height": n_sz.height,
+                    "entry_name": "$onresize",
+                    "data": {
+                        "@width": n_sz.width,
+                        "@height": n_sz.height,
+                    }
+                });
+            }
+            WindowEvent::CursorMoved {
+                device_id: _,
+                position,
+            } => {
+                let _ = self.tx_op.as_ref().unwrap().send(json::object! {
+                    "entry_name": "$onmousemove",
+                    "data": {
+                        "@x": position.x,
+                        "@y": position.y,
                     }
                 });
             }
@@ -127,7 +143,7 @@ impl ApplicationHandler for Application {
 
 fn main() {
     env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("info,wgpu=warn,demo=debug,moon_world=debug"),
+        env_logger::Env::default().default_filter_or("info,wgpu=error,demo=debug,moon_world=debug,view_manager=debug"),
     )
     .init();
 
