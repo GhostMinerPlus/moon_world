@@ -1,14 +1,12 @@
 //! imported => [Engine] = avaliable to render
 
 use drawer::structs::Watcher;
-use edge_lib::util::{
-    data::{AsDataManager, Fu},
-    Path,
-};
+
 use error_stack::ResultExt;
+use moon_class::{util::rs_2_str, AsClassManager, Fu};
 use nalgebra::{Matrix3, Vector2, Vector3};
 use rapier2d::prelude::{Collider, GenericJoint, IntegrationParameters, RigidBodyHandle};
-use view_manager::util::{AsViewManager, VNode, ViewProps};
+use view_manager::{AsViewManager, VNode, ViewProps};
 
 use std::{collections::HashMap, future::Future, pin::Pin};
 use wgpu::{Instance, Surface};
@@ -21,7 +19,7 @@ mod inner {
     use std::collections::HashMap;
 
     use error_stack::ResultExt;
-    use view_manager::util::VNode;
+    use view_manager::VNode;
 
     use crate::err;
 
@@ -99,7 +97,7 @@ impl EngineBuilder {
     }
 
     /// called => the [EngineBuilder] = built
-    pub async fn build(self, dm: Box<dyn AsDataManager>) -> err::Result<Engine> {
+    pub async fn build(self, dm: Box<dyn AsClassManager>) -> err::Result<Engine> {
         let adapter = self
             .instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -203,7 +201,7 @@ pub struct Engine {
     element_index_mp: HashMap<String, HashMap<String, u64>>,
     watcher: Watcher,
 
-    data_manager: Box<dyn AsDataManager>,
+    data_manager: Box<dyn AsClassManager>,
     audio_manager: res::AudioManager,
     physics_manager: res::PhysicsManager,
     vision_manager: res::VisionManager,
@@ -212,7 +210,7 @@ pub struct Engine {
 impl Engine {
     /// called => the result = a new [Engine]
     pub async fn new(
-        dm: Box<dyn AsDataManager>,
+        dm: Box<dyn AsClassManager>,
         audio_manager: res::AudioManager,
         physics_manager: res::PhysicsManager,
         vision_manager: res::VisionManager,
@@ -372,26 +370,49 @@ impl Engine {
     }
 }
 
-impl AsDataManager for Engine {
-    fn call<'a, 'a1, 'a2, 'a3, 'a4, 'f>(
+impl AsClassManager for Engine {
+    fn append<'a, 'a1, 'a2, 'f>(
         &'a mut self,
-        output: &'a1 edge_lib::util::Path,
-        func: &'a2 str,
-        input: &'a3 edge_lib::util::Path,
-        input1: &'a4 edge_lib::util::Path,
-    ) -> std::pin::Pin<Box<dyn Fu<Output = edge_lib::err::Result<()>> + 'f>>
+        class: &'a1 str,
+        source: &'a2 str,
+        item_v: Vec<String>,
+    ) -> std::pin::Pin<Box<dyn Fu<Output = moon_class::err::Result<()>> + 'f>>
     where
         'a: 'f,
         'a1: 'f,
         'a2: 'f,
-        'a3: 'f,
-        'a4: 'f,
+    {
+        self.data_manager.append(class, source, item_v)
+    }
+
+    fn clear<'a, 'a1, 'a2, 'f>(
+        &'a mut self,
+        class: &'a1 str,
+        source: &'a2 str,
+    ) -> std::pin::Pin<Box<dyn Fu<Output = moon_class::err::Result<()>> + 'f>>
+    where
+        'a: 'f,
+        'a1: 'f,
+        'a2: 'f,
+    {
+        self.data_manager.clear(class, source)
+    }
+
+    fn get<'a, 'a1, 'a2, 'f>(
+        &'a self,
+        class: &'a1 str,
+        source: &'a2 str,
+    ) -> std::pin::Pin<Box<dyn Fu<Output = moon_class::err::Result<Vec<String>>> + 'f>>
+    where
+        'a: 'f,
+        'a1: 'f,
+        'a2: 'f,
     {
         Box::pin(async move {
-            match func {
+            match class {
                 "$moon_world_get_pos" => {
                     let vnode_id = self
-                        .get(&input)
+                        .get("$vnode_id", source)
                         .await?
                         .first()
                         .unwrap()
@@ -407,89 +428,34 @@ impl AsDataManager for Engine {
                             .unwrap()
                             .translation();
 
-                        self.set(output, vec![pos.x.to_string(), pos.y.to_string()])
-                            .await
+                        Ok(vec![pos.x.to_string(), pos.y.to_string()])
                     } else {
-                        Err(edge_lib::err::Error::NotFound)
-                            .attach_printable(format!("not such function named {func}"))
+                        Err(moon_class::err::Error::NotFound).attach_printable_lazy(|| {
+                            format!("not such AtomElement with id {vnode_id}")
+                        })
                     }
                 }
-                _ => self.data_manager.call(output, func, input, input1).await,
+                _ => self.data_manager.get(class, source).await,
             }
         })
-    }
-
-    fn get_auth(&self) -> &edge_lib::util::data::Auth {
-        self.data_manager.get_auth()
-    }
-
-    fn append<'a, 'a1, 'f>(
-        &'a mut self,
-        path: &'a1 edge_lib::util::Path,
-        item_v: Vec<String>,
-    ) -> std::pin::Pin<Box<dyn Fu<Output = edge_lib::err::Result<()>> + 'f>>
-    where
-        'a: 'f,
-        'a1: 'f,
-    {
-        self.data_manager.append(path, item_v)
-    }
-
-    fn set<'a, 'a1, 'f>(
-        &'a mut self,
-        path: &'a1 edge_lib::util::Path,
-        item_v: Vec<String>,
-    ) -> std::pin::Pin<Box<dyn Fu<Output = edge_lib::err::Result<()>> + 'f>>
-    where
-        'a: 'f,
-        'a1: 'f,
-    {
-        self.data_manager.set(path, item_v)
-    }
-
-    fn get<'a, 'a1, 'f>(
-        &'a self,
-        path: &'a1 edge_lib::util::Path,
-    ) -> std::pin::Pin<Box<dyn Fu<Output = edge_lib::err::Result<Vec<String>>> + 'f>>
-    where
-        'a: 'f,
-        'a1: 'f,
-    {
-        self.data_manager.get(path)
-    }
-
-    fn get_code_v<'a, 'a1, 'a2, 'f>(
-        &'a self,
-        root: &'a1 str,
-        space: &'a2 str,
-    ) -> std::pin::Pin<Box<dyn Fu<Output = edge_lib::err::Result<Vec<String>>> + 'f>>
-    where
-        'a: 'f,
-        'a1: 'f,
-        'a2: 'f,
-    {
-        self.data_manager.get_code_v(root, space)
     }
 }
 
 impl AsViewManager for Engine {
-    fn get_class<'a, 'a1, 'f>(
+    fn get_class_view<'a, 'a1, 'f>(
         &'a self,
         class: &'a1 str,
-    ) -> Pin<Box<dyn Future<Output = Option<Vec<String>>> + Send + 'f>>
+    ) -> Pin<Box<dyn Future<Output = Option<String>> + Send + 'f>>
     where
         'a: 'f,
         'a1: 'f,
     {
         Box::pin(async move {
-            let rs = self
-                .get(&Path::from_str(&format!("{class}->$w:view")))
-                .await
-                .unwrap();
+            let rs = self.get("view", class).await.unwrap();
             if rs.is_empty() {
                 None
             } else {
-                Some(rs)
+                Some(rs_2_str(&rs))
             }
         })
     }

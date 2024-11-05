@@ -3,11 +3,11 @@ use std::{
     thread,
 };
 
-use edge_lib::util::{
-    data::{AsDataManager, MemDataManager},
-    Path,
-};
 use error_stack::ResultExt;
+use moon_class::{
+    util::{inc_v_from_str, str_of_value},
+    AsClassManager, ClassExecutor, ClassManager,
+};
 use moon_world::{err, EngineBuilder};
 use winit::{
     application::ApplicationHandler,
@@ -62,27 +62,31 @@ impl ApplicationHandler for Application {
                 .build()
                 .unwrap();
             rt.block_on(async move {
-                let mut dm: Box<MemDataManager> = Box::new(MemDataManager::new(None));
+                let mut dm: Box<ClassManager> = Box::new(ClassManager::new());
 
-                dm.set(
-                    &Path::from_str("Main->$w:view"),
-                    vec![
-                        //
-                        format!("$->$:root = ? _"),
-                        format!("$->$:light3 = ? _"),
-                        format!("$->$:cube3 = ? _"),
-                        //
-                        format!("$->$:light3->$:class = Vision:light3 _"),
-                        format!("$->$:cube3->$:class = Vision:cube3 _"),
-                        format!("$->$:root->$:class = div _"),
-                        format!("$->$:root->$:child = $->$:light3 _"),
-                        format!("$->$:root->$:child += $->$:root->$:child $->$:cube3"),
-                        //
-                        format!("$->$:output dump $->$:root $"),
-                    ],
-                )
-                .await
-                .unwrap();
+                ClassExecutor::new(&mut *dm)
+                    .execute(
+                        &inc_v_from_str(&format!(
+                            "{} = view[Main];",
+                            str_of_value(&format!(
+                                "div = $class[root];
+                                Vision:light3 = $class[light3];
+                                Vision:cube3 = $class[cube3];
+
+                                cube3 = $child[root];
+                                light3 = $child[root];
+
+                                $class = $class[];
+                                $props = $class[];
+                                $child = $class[];
+                                root = $source[];
+                                dump[] = $result[];"
+                            ))
+                        ))
+                        .unwrap(),
+                    )
+                    .await
+                    .unwrap();
 
                 let mut engine = engine_builder.build(dm).await.unwrap();
                 loop {

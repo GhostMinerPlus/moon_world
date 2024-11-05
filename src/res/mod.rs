@@ -14,10 +14,10 @@ use rapier2d::prelude::{
     ColliderBuilder, IntegrationParameters, RigidBodyBuilder, RigidBodyHandle,
 };
 use rodio::{cpal::FromSample, OutputStream, Sample, Sink, Source};
-use view_manager::util::ViewProps;
+use view_manager::ViewProps;
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    BufferUsages, SurfaceTexture, TextureView,
+    BufferUsages, SurfaceTexture,
 };
 
 use crate::{err, util::shape::Shape};
