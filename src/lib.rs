@@ -4,6 +4,7 @@ use drawer::structs::Watcher;
 
 use error_stack::ResultExt;
 use moon_class::{util::rs_2_str, AsClassManager, Fu};
+use nalgebra::{vector, Matrix4};
 use rapier2d::prelude::{IntegrationParameters, RigidBodyHandle};
 use view_manager::{AsElementProvider, AsViewManager, VNode, ViewProps};
 
@@ -336,15 +337,23 @@ impl AsClassManager for Engine {
                         height: height_v[0].parse::<u32>().unwrap(),
                     });
 
-                    Ok(())
-                } else {
-                    self.data_manager.clear(class, source).await?;
+                    return Ok(());
+                } else if class == "@new_step" && source == "@camera" {
+                    let x_v = self.get("@x", &item_v[0]).await?;
+                    let y_v = self.get("@y", &item_v[0]).await?;
+                    let z_v = self.get("@z", &item_v[0]).await?;
 
-                    self.data_manager.append(class, source, item_v).await
+                    *self.vision_manager.view_m_mut() = Matrix4::new_translation(&vector![
+                        x_v[0].parse().unwrap(),
+                        y_v[0].parse().unwrap(),
+                        z_v[0].parse().unwrap()
+                    ]) * self.vision_manager.view_m();
+
+                    return Ok(());
                 }
-            } else {
-                self.data_manager.append(class, source, item_v).await
             }
+
+            self.data_manager.append(class, source, item_v).await
         })
     }
 

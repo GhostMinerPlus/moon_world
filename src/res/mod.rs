@@ -469,7 +469,7 @@ impl InputProvider {
 impl AsElementProvider for InputProvider {
     type H = u64;
 
-    fn update_element(&mut self, id: Self::H, props: &ViewProps) {
+    fn update_element(&mut self, id: Self::H, _props: &ViewProps) {
         log::debug!("update_element: {id}")
     }
 
