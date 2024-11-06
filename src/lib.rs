@@ -402,6 +402,19 @@ impl AsClassManager for Engine {
             }
         })
     }
+
+    fn get_source<'a, 'a1, 'a2, 'f>(
+        &'a self,
+        target: &'a1 str,
+        class: &'a2 str,
+    ) -> Pin<Box<dyn Fu<Output = moon_class::err::Result<Vec<String>>> + 'f>>
+    where
+        'a: 'f,
+        'a1: 'f,
+        'a2: 'f,
+    {
+        self.data_manager.get_source(target, class)
+    }
 }
 
 impl AsElementProvider for Engine {

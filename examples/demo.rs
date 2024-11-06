@@ -5,8 +5,8 @@ use std::{
 
 use error_stack::ResultExt;
 use moon_class::{
-    util::{inc_v_from_str, str_of_value},
-    AsClassManager, ClassExecutor, ClassManager,
+    util::str_of_value,
+    ClassExecutor, ClassManager,
 };
 use moon_world::{err, EngineBuilder};
 use winit::{
@@ -65,30 +65,27 @@ impl ApplicationHandler for Application {
                 let mut dm: Box<ClassManager> = Box::new(ClassManager::new());
 
                 ClassExecutor::new(&mut *dm)
-                    .execute(
-                        &inc_v_from_str(&format!(
-                            "{} = view[Main];",
-                            str_of_value(&format!(
-                                "div = $class[root];
+                    .execute_script(&format!(
+                        "{} = view[Main];",
+                        str_of_value(&format!(
+                            "div = $class[root];
                                 Vision:light3 = $class[light3];
                                 Vision:cube3 = $class[cube3];
                                 Input:window = $class[window];
                                 cube3 = $child[root];
-                                light3 = $child[root];
-                                window = $child[root];
+                                light3 += $child[root];
+                                window += $child[root];
                                 ? = $props[window];
                                 '$data[] = @new_size[@window];' = $onresize[$props[window]];
 
                                 $class = $class[];
-                                $props = $class[];
-                                $onresize = $class[];
-                                $child = $class[];
+                                $props += $class[];
+                                $onresize += $class[];
+                                $child += $class[];
                                 root = $source[];
-                                dump[] = $result[];"
-                            ))
+                                #dump[] = $result[];"
                         ))
-                        .unwrap(),
-                    )
+                    ))
                     .await
                     .unwrap();
 
@@ -143,7 +140,8 @@ impl ApplicationHandler for Application {
 
 fn main() {
     env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("info,wgpu=error,demo=debug,moon_world=debug,view_manager=debug"),
+        env_logger::Env::default()
+            .default_filter_or("info,wgpu=error,demo=debug,moon_world=debug,view_manager=debug"),
     )
     .init();
 
