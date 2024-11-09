@@ -19,8 +19,9 @@ winit = "0.30"
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
 json = "0.12"
 
-moon_class = { git = "https://github.com/GhostMinerPlus/moon_class.git" }
-sqlite-cm = { git = "https://github.com/GhostMinerPlus/moon_class.git" }
+moon_class = { git = "https://github.com/GhostMinerPlus/moon_class.git", features = ["no_send"] }
+sqlite-cm = { git = "https://github.com/GhostMinerPlus/moon_class.git", features = ["no_send"] }
+deno-cm = { git = "https://github.com/GhostMinerPlus/moon_class.git", features = ["no_send"] }
 view-manager = { git = "https://github.com/GhostMinerPlus/view-manager.git" }
 
 drawer = { path = "drawer" }

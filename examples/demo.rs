@@ -3,12 +3,11 @@ use std::{
     thread,
 };
 
+use deno_cm::CmRuntime;
 use error_stack::ResultExt;
-use moon_class::{
-    util::str_of_value,
-    ClassExecutor, ClassManager,
-};
+use moon_class::{util::str_of_value, ClassManager};
 use moon_world::{err, EngineBuilder};
+use view_manager::ViewProps;
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
@@ -62,43 +61,51 @@ impl ApplicationHandler for Application {
                 .build()
                 .unwrap();
             rt.block_on(async move {
-                let mut dm: Box<ClassManager> = Box::new(ClassManager::new());
+                let mut engine = engine_builder.build(Box::new(ClassManager::new())).await.unwrap();
 
-                ClassExecutor::new(&mut *dm)
-                    .execute_script(&format!(
-                        "{} = view[Main];",
-                        str_of_value(&format!(
-                            "div = $class[root];
-                                Vision:light3 = $class[light3];
-                                Vision:cube3 = $class[cube3];
-                                Input:window = $class[window];
-                                cube3 = $child[root];
-                                light3 += $child[root];
-                                window += $child[root];
-                                ? = $props[window];
-                                '$data[] = @new_size[@window];' = $onresize[$props[window]];
+                let mut cm_runtime = CmRuntime::new(engine.clone());
 
-                                $class = $class[];
-                                $props += $class[];
-                                $onresize += $class[];
-                                $child += $class[];
-                                root = $source[];
-                                #dump[] = $result[];"
-                        ))
+                cm_runtime
+                    .execute_script_local(format!(
+                        r#"
+    await Deno.core.ops.cm_append("view", "Main", [{}]);
+            "#,
+                        str_of_value(
+                            "const root = {};
+                root.$class = 'div';
+                root.$child = [
+                        {$class: 'Vision:light3' },
+                        {$class: 'Vision:cube3' }
+                ];
+                
+                return root;"
+                        )
                     ))
                     .await
                     .unwrap();
 
-                let mut engine = engine_builder.build(dm).await.unwrap();
+                engine
+                    .init(
+                        &mut cm_runtime,
+                        ViewProps {
+                            class: "Main".to_string(),
+                            props: json::Null,
+                        },
+                    )
+                    .await;
+
                 loop {
                     while let Ok(event) = rx.try_recv() {
                         let entry_name = event["entry_name"].as_str().unwrap();
                         let data = &event["data"];
 
-                        engine.event_handler(entry_name, data).await.unwrap();
+                        engine
+                            .event_handler(&mut cm_runtime, entry_name, data)
+                            .await
+                            .unwrap();
                     }
 
-                    engine.step().await.unwrap();
+                    engine.step(&mut cm_runtime).await.unwrap();
 
                     engine.render().unwrap();
                 }
