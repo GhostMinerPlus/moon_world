@@ -1,7 +1,6 @@
 //! imported => [Engine] = avaliable to render
 
 use deno_cm::CmRuntime;
-use drawer::structs::Watcher;
 
 use error_stack::ResultExt;
 use moon_class::{util::rs_2_str, AsClassManager, Fu};
@@ -19,7 +18,6 @@ mod res;
 mod inner {
     use std::collections::HashMap;
 
-    use drawer::structs::Watcher;
     use error_stack::ResultExt;
     use moon_class::AsClassManager;
     use view_manager::VNode;
@@ -71,7 +69,6 @@ mod inner {
         pub vnode_mp: HashMap<u64, VNode>,
         pub watcher_binding_body_id: u64,
         pub element_mp: HashMap<u64, AtomElement>,
-        pub watcher: Watcher,
 
         pub data_manager: Box<dyn AsClassManager>,
         pub physics_manager: res::PhysicsManager,
@@ -175,24 +172,10 @@ impl EngineBuilder {
             config
         };
 
-        let surface_drawer = drawer::SurfaceDrawer::new(&device, &config);
-
-        let watcher_drawer = drawer::WathcerDrawer::new(&device, &config);
-
-        let ray_drawer = drawer::RayDrawer::new(&device, self.size);
-
         Ok(Engine::new(
             dm,
             res::PhysicsManager::new(IntegrationParameters::default()),
-            res::VisionManager::new(
-                ray_drawer,
-                watcher_drawer,
-                surface_drawer,
-                self.surface,
-                device,
-                queue,
-                config,
-            ),
+            res::VisionManager::new(self.surface, device, queue, config),
         ))
     }
 }
@@ -225,10 +208,6 @@ impl Engine {
                 vnode_mp: HashMap::new(),
                 watcher_binding_body_id: 0,
                 element_mp: HashMap::new(),
-                watcher: Watcher {
-                    position: [0.0, 0.0],
-                    offset: [0.0, 0.0],
-                },
                 data_manager: dm,
                 physics_manager,
                 vision_manager,
@@ -293,24 +272,6 @@ impl Engine {
                 .await;
         }
 
-        if let Some(ele) = unsafe { &*self.inner.as_ptr() }
-            .element_mp
-            .get(&unsafe { &*self.inner.as_ptr() }.watcher_binding_body_id)
-        {
-            if let AtomElement::Physics(h) = ele {
-                if let Some(body) = unsafe { &*self.inner.as_ptr() }
-                    .physics_manager
-                    .physics_engine
-                    .rigid_body_set
-                    .get(*h)
-                {
-                    let pos = body.translation();
-
-                    unsafe { &mut *self.inner.as_ptr() }.watcher.position = [pos.x, pos.y];
-                }
-            }
-        }
-
         Ok(())
     }
 
@@ -318,7 +279,7 @@ impl Engine {
     pub fn render(&mut self) -> err::Result<()> {
         let mut rp = unsafe { &mut *self.inner.as_ptr() }
             .vision_manager
-            .render_pass(&unsafe { &*self.inner.as_ptr() }.watcher)?;
+            .render_pass()?;
 
         inner::render_vnode(
             &unsafe { &*self.inner.as_ptr() }.vnode_mp,

@@ -18,22 +18,6 @@ pub struct Line {
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Watcher {
-    pub position: [f32; 2],
-    pub offset: [f32; 2],
-}
-
-impl Watcher {
-    pub fn new() -> Self {
-        Self {
-            position: [0.0, 0.0],
-            offset: [0.0, 0.0],
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct PointInput {
     pub position: [f32; 2],
 }
@@ -80,12 +64,12 @@ impl Point3Input {
     }
 }
 
-pub struct Body {
+pub struct Point3InputArray {
     vertex_v: Vec<Point3Input>,
 }
 
-impl Body {
-    pub fn cube(m: Matrix4<f32>, color: Vector4<f32>) -> Body {
+impl Point3InputArray {
+    pub fn cube(color: Vector4<f32>) -> Point3InputArray {
         let color = [color.x, color.y, color.z, color.w];
         let normal = [0.0, 0.0, 1.0, 0.0];
 
@@ -167,11 +151,13 @@ impl Body {
                         vertex.position[1],
                         vertex.position[2],
                     ]);
-                    let normal = rt_m.transform_vector(&vector![
-                        vertex.normal[0],
-                        vertex.normal[1],
-                        vertex.normal[2],
-                    ]);
+                    let normal = rt_m
+                        .transform_vector(&vector![
+                            vertex.normal[0],
+                            vertex.normal[1],
+                            vertex.normal[2],
+                        ])
+                        .normalize();
 
                     Point3Input {
                         position: [position.x, position.y, position.z, 1.0],
@@ -183,24 +169,6 @@ impl Body {
 
             vertex_v.extend(face);
             cur_is_up = !cur_is_up;
-        }
-
-        for vertex in &mut vertex_v {
-            let position = m.transform_point(&point![
-                vertex.position[0],
-                vertex.position[1],
-                vertex.position[2],
-            ]);
-            let normal = m
-                .transform_vector(&vector![
-                    vertex.normal[0],
-                    vertex.normal[1],
-                    vertex.normal[2],
-                ])
-                .normalize();
-
-            vertex.position = [position.x, position.y, position.z, 1.0];
-            vertex.normal = [normal.x, normal.y, normal.z, 0.0];
         }
 
         Self { vertex_v }

@@ -1,6 +1,6 @@
 use std::{f32::consts::PI, sync::Arc};
 
-use drawer::{save_texture, Light, ThreeDrawer, ThreeLook};
+use drawer::{save_texture, Body, Light, ThreeDrawer, ThreeLook};
 use nalgebra::{vector, Matrix4};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
@@ -67,34 +67,34 @@ fn main() {
                 proj: drawer::WGPU_OFFSET_M
                     * Matrix4::new_orthographic(-10.0, 10.0, -10.0, 10.0, 0.0, 20.0),
             }),
-            ThreeLook::Body(Arc::new(
-                device.create_buffer_init(&BufferInitDescriptor {
-                    label: None,
-                    contents: bytemuck::cast_slice(
-                        drawer::structs::Body::cube(
-                            Matrix4::new_translation(&vector![0.0, 0.0, -3.0])
-                                * Matrix4::new_rotation(vector![0.0, -PI * 0.25, 0.0]),
-                            vector![1.0, 1.0, 1.0, 1.0],
-                        )
-                        .vertex_v(),
-                    ),
-                    usage: BufferUsages::VERTEX,
-                }),
-            )),
-            ThreeLook::Body(Arc::new(
-                device.create_buffer_init(&BufferInitDescriptor {
-                    label: None,
-                    contents: bytemuck::cast_slice(
-                        drawer::structs::Body::cube(
-                            Matrix4::new_translation(&vector![0.0, 1.0, -3.0])
-                                * Matrix4::new_rotation(vector![0.0, -PI * 0.45, 0.0]),
-                            vector![1.0, 1.0, 1.0, 1.0],
-                        )
-                        .vertex_v(),
-                    ),
-                    usage: BufferUsages::VERTEX,
-                }),
-            )),
+            ThreeLook::Body(Body {
+                model_m: Matrix4::new_translation(&vector![0.0, 0.0, -3.0])
+                    * Matrix4::new_rotation(vector![0.0, -PI * 0.25, 0.0]),
+                buf: Arc::new(
+                    device.create_buffer_init(&BufferInitDescriptor {
+                        label: None,
+                        contents: bytemuck::cast_slice(
+                            drawer::structs::Point3InputArray::cube(vector![1.0, 1.0, 1.0, 1.0])
+                                .vertex_v(),
+                        ),
+                        usage: BufferUsages::VERTEX,
+                    }),
+                ),
+            }),
+            ThreeLook::Body(Body {
+                model_m: Matrix4::new_translation(&vector![0.0, 1.0, -3.0])
+                    * Matrix4::new_rotation(vector![0.0, -PI * 0.45, 0.0]),
+                buf: Arc::new(
+                    device.create_buffer_init(&BufferInitDescriptor {
+                        label: None,
+                        contents: bytemuck::cast_slice(
+                            drawer::structs::Point3InputArray::cube(vector![1.0, 1.0, 1.0, 1.0])
+                                .vertex_v(),
+                        ),
+                        usage: BufferUsages::VERTEX,
+                    }),
+                ),
+            }),
         ];
         let three_drawer = ThreeDrawer::new(
             &device,

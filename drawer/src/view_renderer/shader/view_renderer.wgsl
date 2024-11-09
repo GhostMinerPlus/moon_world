@@ -10,8 +10,9 @@ struct Fragment {
     @location(1) color: vec4<f32>,
 }
 
-@group(0) @binding(0) var<uniform> vm: mat4x4<f32>;
+@group(0) @binding(0) var<uniform> view: mat4x4<f32>;
 @group(0) @binding(1) var<uniform> proj: mat4x4<f32>;
+@group(0) @binding(2) var<uniform> model: mat4x4<f32>;
 
 fn f4_2_f(f4: vec4<f32>) -> f32 {
     let bit_shift = vec4<f32>(1.0, 1.0 / 10.0, 1.0 / (10.0 * 10.0), 1.0 / (10.0 * 10.0 * 10.0)) * 0.9;
@@ -23,8 +24,9 @@ fn f4_2_f(f4: vec4<f32>) -> f32 {
 fn vs_main(in: Vertex) -> Fragment {
     var out: Fragment;
 
-    out.position = proj * vm * in.position;
-    out.pos = in.position;
+    out.pos = model * in.position;
+
+    out.position = proj * view * out.pos;
     out.color = in.color;
 
     return out;

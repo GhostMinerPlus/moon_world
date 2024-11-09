@@ -1,14 +1,12 @@
-use std::sync::Arc;
-
 use nalgebra::Matrix4;
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    BindGroupLayout, Buffer, BufferUsages, Color, DepthBiasState, DepthStencilState, Device,
-    Extent3d, Operations, Queue, RenderPassDepthStencilAttachment, RenderPipeline, StencilState,
-    Texture, TextureDescriptor, TextureFormat, TextureUsages,
+    BindGroupLayout, BufferUsages, Color, DepthBiasState, DepthStencilState, Device, Extent3d,
+    Operations, Queue, RenderPassDepthStencilAttachment, RenderPipeline, StencilState, Texture,
+    TextureDescriptor, TextureFormat, TextureUsages,
 };
 
-use crate::{pipeline, structs::Point3Input};
+use crate::{pipeline, structs::Point3Input, Body};
 
 pub struct ViewRenderer {
     render_pipeline: RenderPipeline,
@@ -33,6 +31,16 @@ impl ViewRenderer {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
                     visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
@@ -114,13 +122,13 @@ impl ViewRenderer {
         &self,
         device: &Device,
         queue: &Queue,
-        mv: &Matrix4<f32>,
+        view: &Matrix4<f32>,
         proj: &Matrix4<f32>,
-        body_v: &[Arc<Buffer>],
+        body_v: &[&Body],
     ) -> &Texture {
-        let mv_buf = device.create_buffer_init(&BufferInitDescriptor {
+        let view_buf = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
-            contents: bytemuck::cast_slice(mv.as_slice()),
+            contents: bytemuck::cast_slice(view.as_slice()),
             usage: BufferUsages::UNIFORM,
         });
         let proj_buf = device.create_buffer_init(&BufferInitDescriptor {
@@ -128,11 +136,17 @@ impl ViewRenderer {
             contents: bytemuck::cast_slice(proj.as_slice()),
             usage: BufferUsages::UNIFORM,
         });
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Render Encoder"),
-        });
 
-        {
+        for body in body_v {
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
+            let model_buf = device.create_buffer_init(&BufferInitDescriptor {
+                label: None,
+                contents: bytemuck::cast_slice(body.model_m.as_slice()),
+                usage: BufferUsages::UNIFORM,
+            });
+
             let view_texture_view = self
                 .view_texture
                 .create_view(&wgpu::TextureViewDescriptor::default());
@@ -140,58 +154,62 @@ impl ViewRenderer {
                 .depth_texture
                 .create_view(&wgpu::TextureViewDescriptor::default());
 
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view_texture_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(Color::TRANSPARENT),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
-                    view: &depth_texture_view,
-                    depth_ops: Some(Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
+            {
+                let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Render Pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view_texture_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(Color::TRANSPARENT),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
+                        view: &depth_texture_view,
+                        depth_ops: Some(Operations {
+                            load: wgpu::LoadOp::Clear(1.0),
+                            store: wgpu::StoreOp::Store,
+                        }),
+                        stencil_ops: None,
                     }),
-                    stencil_ops: None,
-                }),
-                occlusion_query_set: None,
-                timestamp_writes: None,
-            });
+                    occlusion_query_set: None,
+                    timestamp_writes: None,
+                });
 
-            render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(
-                0,
-                &device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    layout: &self.bind_group_layout,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: mv_buf.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: proj_buf.as_entire_binding(),
-                        },
-                    ],
-                    label: None,
-                }),
-                &[],
-            );
+                render_pass.set_pipeline(&self.render_pipeline);
+                render_pass.set_bind_group(
+                    0,
+                    &device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        layout: &self.bind_group_layout,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: view_buf.as_entire_binding(),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: proj_buf.as_entire_binding(),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: model_buf.as_entire_binding(),
+                            },
+                        ],
+                        label: None,
+                    }),
+                    &[],
+                );
 
-            for body in body_v {
-                render_pass.set_vertex_buffer(0, body.slice(..));
+                render_pass.set_vertex_buffer(0, body.buf.slice(..));
                 render_pass.draw(
-                    0..(body.size() as usize / std::mem::size_of::<Point3Input>()) as u32,
+                    0..(body.buf.size() as usize / std::mem::size_of::<Point3Input>()) as u32,
                     0..1,
                 );
             }
-        }
 
-        queue.submit(std::iter::once(encoder.finish()));
+            queue.submit(std::iter::once(encoder.finish()));
+        }
 
         &self.view_texture
     }
@@ -251,27 +269,24 @@ mod tests {
                 .unwrap();
 
             let renderer = ViewRenderer::new(&device);
-            let look_v = vec![Arc::new(
-                device.create_buffer_init(&BufferInitDescriptor {
+            let look_v = vec![Body {
+                model_m: Matrix4::new_translation(&vector![0.0, 0.0, -2.0])
+                    * Matrix4::new_rotation(vector![0.0, PI * 0.25, 0.0]),
+                buf: Arc::new(device.create_buffer_init(&BufferInitDescriptor {
                     label: None,
                     contents: bytemuck::cast_slice(
-                        structs::Body::cube(
-                            Matrix4::new_translation(&vector![0.0, 0.0, -2.0])
-                                * Matrix4::new_rotation(vector![0.0, PI * 0.25, 0.0]),
-                            vector![1.0, 1.0, 1.0, 1.0],
-                        )
-                        .vertex_v(),
+                        structs::Point3InputArray::cube(vector![1.0, 1.0, 1.0, 1.0]).vertex_v(),
                     ),
                     usage: BufferUsages::VERTEX,
-                }),
-            )];
+                })),
+            }];
 
             renderer.view_renderer(
                 &device,
                 &queue,
                 &Matrix4::identity(),
                 &(WGPU_OFFSET_M * Matrix4::new_perspective(1.0, PI * 0.6, 0.1, 500.0)),
-                &look_v,
+                &look_v.iter().collect::<Vec<&Body>>(),
             );
         })
     }

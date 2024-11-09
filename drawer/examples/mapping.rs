@@ -1,6 +1,6 @@
 use std::{f32::consts::PI, sync::Arc};
 
-use drawer::{light_mapping::LightMappingBuilder, save_texture, Light};
+use drawer::{light_mapping::LightMappingBuilder, save_texture, Body, Light};
 use nalgebra::{vector, Matrix4};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
@@ -47,22 +47,30 @@ fn main() {
             .unwrap();
 
         let lm_builder = LightMappingBuilder::new(&device);
-        let body_v = vec![Arc::new(
-            device.create_buffer_init(&BufferInitDescriptor {
-                label: None,
-                contents: bytemuck::cast_slice(
-                    drawer::structs::Body::cube(
-                        Matrix4::new_translation(&vector![0.0, 0.0, -5.0])
-                            * Matrix4::new_rotation(vector![0.0, PI * 0.25, 0.0]),
-                        vector![1.0, 1.0, 1.0, 1.0],
-                    )
-                    .vertex_v(),
-                ),
-                usage: BufferUsages::VERTEX,
-            }),
-        )];
+        let body_v = vec![Body {
+            model_m: 
+            Matrix4::new_translation(&vector![0.0, 0.0, -5.0])
+                * Matrix4::new_rotation(vector![0.0, PI * 0.25, 0.0]),
+            buf: Arc::new(
+                device.create_buffer_init(&BufferInitDescriptor {
+                    label: None,
+                    contents: bytemuck::cast_slice(
+                        drawer::structs::Point3InputArray::cube(
+                            vector![1.0, 1.0, 1.0, 1.0],
+                        )
+                        .vertex_v(),
+                    ),
+                    usage: BufferUsages::VERTEX,
+                }),
+            ),
+        }];
 
-        let (_, depth_tex) = lm_builder.light_mapping(&device, &queue, &light.view, &body_v);
+        let (_, depth_tex) = lm_builder.light_mapping(
+            &device,
+            &queue,
+            &light.view,
+            &body_v.iter().collect::<Vec<&Body>>(),
+        );
 
         save_texture(
             &device,

@@ -1,14 +1,12 @@
-use std::sync::Arc;
-
 use nalgebra::Matrix4;
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    BindGroupLayout, Buffer, BufferUsages, Color, DepthBiasState, DepthStencilState, Device,
-    Extent3d, Queue, RenderPassDepthStencilAttachment, RenderPipeline, StencilState, Texture,
+    BindGroupLayout, BufferUsages, Color, DepthBiasState, DepthStencilState, Device, Extent3d,
+    Queue, RenderPassDepthStencilAttachment, RenderPipeline, StencilState, Texture,
     TextureDescriptor, TextureFormat, TextureUsages,
 };
 
-use crate::structs::Point3Input;
+use crate::{structs::Point3Input, Body};
 
 use super::pipeline;
 
@@ -20,16 +18,28 @@ pub struct LightMappingBuilder {
 impl LightMappingBuilder {
     pub fn new(device: &Device) -> Self {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
             label: Some("light"),
         });
 
@@ -68,15 +78,12 @@ impl LightMappingBuilder {
         device: &Device,
         queue: &Queue,
         light: &Matrix4<f32>,
-        body_v: &[Arc<Buffer>],
+        body_v: &[&Body],
     ) -> (Texture, Texture) {
         let light_buf = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
             contents: bytemuck::cast_slice(light.as_slice()),
             usage: BufferUsages::UNIFORM,
-        });
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Render Encoder"),
         });
 
         let color_texture = device.create_texture(&TextureDescriptor {
@@ -113,56 +120,71 @@ impl LightMappingBuilder {
             view_formats: &[],
         });
 
-        {
-            let color_view = color_texture.create_view(&wgpu::TextureViewDescriptor::default());
-            let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let color_view = color_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &color_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(Color::TRANSPARENT),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
-                    view: &depth_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
-                occlusion_query_set: None,
-                timestamp_writes: None,
+        for body in body_v {
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
+            let model_buf = device.create_buffer_init(&BufferInitDescriptor {
+                label: None,
+                contents: bytemuck::cast_slice(body.model_m.as_slice()),
+                usage: BufferUsages::UNIFORM,
             });
 
-            render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(
-                0,
-                &device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    layout: &self.bind_group_layout,
-                    entries: &[wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: light_buf.as_entire_binding(),
-                    }],
-                    label: Some("bind_group0"),
-                }),
-                &[],
-            );
+            {
+                let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Render Pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &color_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(Color::TRANSPARENT),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
+                        view: &depth_view,
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(1.0),
+                            store: wgpu::StoreOp::Store,
+                        }),
+                        stencil_ops: None,
+                    }),
+                    occlusion_query_set: None,
+                    timestamp_writes: None,
+                });
 
-            for body in body_v {
-                render_pass.set_vertex_buffer(0, body.slice(..));
+                render_pass.set_pipeline(&self.render_pipeline);
+                render_pass.set_bind_group(
+                    0,
+                    &device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        layout: &self.bind_group_layout,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: light_buf.as_entire_binding(),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: model_buf.as_entire_binding(),
+                            },
+                        ],
+                        label: Some("bind_group0"),
+                    }),
+                    &[],
+                );
+
+                render_pass.set_vertex_buffer(0, body.buf.slice(..));
                 render_pass.draw(
-                    0..(body.size() as usize / std::mem::size_of::<Point3Input>()) as u32,
+                    0..(body.buf.size() as usize / std::mem::size_of::<Point3Input>()) as u32,
                     0..1,
                 );
             }
-        }
 
-        queue.submit(std::iter::once(encoder.finish()));
+            queue.submit(std::iter::once(encoder.finish()));
+        }
 
         (color_texture, depth_texture)
     }
@@ -170,7 +192,7 @@ impl LightMappingBuilder {
 
 #[cfg(test)]
 mod tests {
-    use std::f32::consts::PI;
+    use std::{f32::consts::PI, sync::Arc};
 
     use nalgebra::{vector, Matrix4};
 
@@ -226,23 +248,30 @@ mod tests {
                 .unwrap();
 
             let lm_builder = LightMappingBuilder::new(&device);
-            let body_v = vec![Arc::new(
-                device.create_buffer_init(&BufferInitDescriptor {
-                    label: None,
-                    contents: bytemuck::cast_slice(
-                        structs::Body::cube(
-                            Matrix4::new_translation(&vector![0.0, 0.0, -3.0])
-                                * Matrix4::new_rotation(vector![0.0, -PI * 0.25, 0.0]),
-                            vector![1.0, 1.0, 1.0, 1.0],
-                        )
-                        .vertex_v(),
-                    ),
-                    usage: BufferUsages::VERTEX,
-                }),
-            )];
+            let body_v = vec![Body {
+                model_m: 
+                Matrix4::new_translation(&vector![0.0, 0.0, -3.0])
+                    * Matrix4::new_rotation(vector![0.0, -PI * 0.25, 0.0]),
+                buf: Arc::new(
+                    device.create_buffer_init(&BufferInitDescriptor {
+                        label: None,
+                        contents: bytemuck::cast_slice(
+                            structs::Point3InputArray::cube(
+                                vector![1.0, 1.0, 1.0, 1.0],
+                            )
+                            .vertex_v(),
+                        ),
+                        usage: BufferUsages::VERTEX,
+                    }),
+                ),
+            }];
 
-            let (_, depth_texture) =
-                lm_builder.light_mapping(&device, &queue, &(light.proj * light.view), &body_v);
+            let (_, depth_texture) = lm_builder.light_mapping(
+                &device,
+                &queue,
+                &(light.proj * light.view),
+                &body_v.iter().collect::<Vec<&Body>>(),
+            );
 
             save_texture(
                 &device,

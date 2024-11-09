@@ -4,12 +4,9 @@ use std::{
     sync::{mpsc::channel, Arc},
 };
 
-use drawer::{
-    structs::{self, Watcher},
-    Light, ThreeLook,
-};
+use drawer::{Body, Light, ThreeLook};
 use error_stack::ResultExt;
-use nalgebra::{vector, Matrix3, Matrix4, Vector3};
+use nalgebra::{vector, Matrix4};
 use rapier2d::prelude::{
     ColliderBuilder, IntegrationParameters, RigidBodyBuilder, RigidBodyHandle,
 };
@@ -19,12 +16,9 @@ use wgpu::{
     BufferUsages, SurfaceTexture,
 };
 
-use crate::{err, util::shape::Shape};
+use crate::err;
 
-use super::{
-    physics,
-    util::{Body, BodyLook, RayLook},
-};
+use super::physics;
 
 mod inner {
     use std::sync::mpsc::Sender;
@@ -100,7 +94,6 @@ mod inner {
 
 pub struct PhysicsManager {
     pub physics_engine: physics::PhysicsEngine,
-    pub watcher: structs::Watcher,
     // pub on_event: Option<Rc<dyn Fn(SceneHandle, E)>>,
     // pub on_collision_event: Option<Rc<dyn Fn(SceneHandle, CollisionEvent)>>,
     // pub on_force_event: Option<Rc<dyn Fn(SceneHandle, ContactForceEvent)>>,
@@ -119,10 +112,8 @@ impl PhysicsManager {
             force_sender,
         )));
 
-        let watcher = structs::Watcher::new();
         Self {
             physics_engine,
-            watcher,
             // on_event: None,
             // on_step: None,
             // on_collision_event: None,
@@ -193,49 +184,12 @@ impl<'a> RenderPass<'a> {
                 &view,
                 self.id_v
                     .iter()
-                    .map(|id| self.vm.body_mp.get(id).unwrap().look.three_look.as_ref())
+                    .map(|id| self.vm.body_mp.get(id))
                     .filter(|op| op.is_some())
                     .map(|op| op.unwrap())
                     .collect(),
             )
             .change_context(err::Error::Other)?;
-
-        // {
-        //     let line_v = inner::gen_line_v(self.vm, &self.id_v);
-        //     if !line_v.is_empty() {
-        //         self.vm.ray_drawer.update_line_v(&self.vm.device, &line_v);
-
-        //         // Draw ray tracing result to texture
-        //         self.vm
-        //             .ray_drawer
-        //             .draw_ray_to_point_texture(&self.vm.device, &self.vm.queue);
-        //     }
-
-        //     // Let the points be drew to current surface.
-        //     self.vm
-        //         .surface_drawer
-        //         .draw_point_to_surface(
-        //             &self.vm.device,
-        //             &self.vm.queue,
-        //             &self.view,
-        //             self.vm.ray_drawer.get_result_buffer(),
-        //             self.vm.ray_drawer.get_size_buffer(),
-        //         )
-        //         .unwrap();
-        // }
-
-        // // Let the watcher be drew to current surface.
-        // self.vm
-        //     .light_drawer
-        //     .draw_light_to_surface(
-        //         &self.vm.device,
-        //         &self.vm.queue,
-        //         &self.view,
-        //         self.vm.ray_drawer.get_watcher_buffer(),
-        //         self.vm.ray_drawer.get_size_buffer(),
-        //         &inner::gen_light_line_v(self.vm, &self.id_v),
-        //     )
-        //     .unwrap();
 
         self.output.present();
 
@@ -250,19 +204,13 @@ pub struct VisionManager {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
 
-    pub ray_drawer: drawer::RayDrawer,
-    pub light_drawer: drawer::WathcerDrawer,
     pub three_drawer: drawer::ThreeDrawer,
-    pub surface_drawer: drawer::SurfaceDrawer,
 
-    pub body_mp: HashMap<u64, Body>,
+    pub body_mp: HashMap<u64, ThreeLook>,
 }
 
 impl VisionManager {
     pub fn new(
-        ray_drawer: drawer::RayDrawer,
-        light_drawer: drawer::WathcerDrawer,
-        surface_drawer: drawer::SurfaceDrawer,
         surface: wgpu::Surface<'static>,
         device: wgpu::Device,
         queue: wgpu::Queue,
@@ -275,10 +223,7 @@ impl VisionManager {
         );
 
         Self {
-            ray_drawer,
-            light_drawer,
             three_drawer,
-            surface_drawer,
             device,
             queue,
             config,
@@ -292,15 +237,13 @@ impl VisionManager {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
-            self.ray_drawer.resize(&self.device, &self.queue, new_size);
 
             log::debug!("new_size = {new_size:?}");
         }
     }
 
     /// called => the result = a new render pass
-    pub fn render_pass(&mut self, watcher: &Watcher) -> err::Result<RenderPass> {
-        self.ray_drawer.update_watcher(&self.device, watcher);
+    pub fn render_pass(&mut self) -> err::Result<RenderPass> {
         // Let the surface be drew.
         let output = self
             .surface
@@ -328,50 +271,18 @@ impl AsElementProvider for VisionManager {
 
     fn create_element(&mut self, vnode_id: u64, class: &str) -> u64 {
         match class {
-            "ball" => {
-                log::debug!("create_element: create ball {vnode_id}");
-
-                self.body_mp.insert(
-                    vnode_id,
-                    Body {
-                        class: format!("ball"),
-                        look: BodyLook {
-                            ray_look: vec![RayLook {
-                                shape: Shape::circle(),
-                                shape_matrix: Matrix3::identity(),
-                                color: Vector3::new(1.0, 1.0, 1.0),
-                                light: 1.0,
-                                roughness: 0.0,
-                                seed: 0.0,
-                                is_visible: true,
-                            }],
-                            light_look: vec![],
-                            three_look: None,
-                        },
-                    },
-                );
-            }
             "light3" => {
                 log::debug!("create_element: create light3 {vnode_id}");
 
                 self.body_mp.insert(
                     vnode_id,
-                    Body {
-                        class: format!("light3"),
-                        look: BodyLook {
-                            ray_look: vec![],
-                            light_look: vec![],
-                            three_look: Some(ThreeLook::Light(Light {
-                                color: vector![1.0, 1.0, 1.0, 1.0],
-                                view: Matrix4::new_translation(&vector![0.0, 5.0, 0.0])
-                                    * Matrix4::new_rotation(vector![PI * 0.25, 0.0, 0.0]),
-                                proj: drawer::WGPU_OFFSET_M
-                                    * Matrix4::new_orthographic(
-                                        -10.0, 10.0, -10.0, 10.0, 0.0, 20.0,
-                                    ),
-                            })),
-                        },
-                    },
+                    ThreeLook::Light(Light {
+                        color: vector![1.0, 1.0, 1.0, 1.0],
+                        view: Matrix4::new_translation(&vector![0.0, 5.0, 0.0])
+                            * Matrix4::new_rotation(vector![PI * 0.25, 0.0, 0.0]),
+                        proj: drawer::WGPU_OFFSET_M
+                            * Matrix4::new_orthographic(-10.0, 10.0, -10.0, 10.0, 0.0, 20.0),
+                    }),
                 );
             }
             "cube3" => {
@@ -379,52 +290,22 @@ impl AsElementProvider for VisionManager {
 
                 self.body_mp.insert(
                     vnode_id,
-                    Body {
-                        class: format!("cube3"),
-                        look: BodyLook {
-                            ray_look: vec![],
-                            light_look: vec![],
-                            three_look: Some(ThreeLook::Body(Arc::new(
-                                self.device.create_buffer_init(&BufferInitDescriptor {
-                                    label: None,
-                                    contents: bytemuck::cast_slice(
-                                        drawer::structs::Body::cube(
-                                            Matrix4::new_translation(&vector![0.0, 0.0, -3.0])
-                                                * Matrix4::new_rotation(vector![
-                                                    0.0,
-                                                    -PI * 0.25,
-                                                    0.0
-                                                ]),
-                                            vector![1.0, 1.0, 1.0, 1.0],
-                                        )
-                                        .vertex_v(),
-                                    ),
-                                    usage: BufferUsages::VERTEX,
-                                }),
-                            ))),
-                        },
-                    },
-                );
-            }
-            "quad" => {
-                self.body_mp.insert(
-                    vnode_id,
-                    Body {
-                        class: format!("quad"),
-                        look: BodyLook {
-                            ray_look: vec![RayLook {
-                                shape: Shape::quad(1.0, 1.0),
-                                shape_matrix: Matrix3::identity(),
-                                color: Vector3::new(1.0, 1.0, 1.0),
-                                light: 0.0,
-                                roughness: 0.0,
-                                seed: 0.0,
-                                is_visible: true,
-                            }],
-                            light_look: vec![],
-                            three_look: None,
-                        },
-                    },
+                    ThreeLook::Body(Body {
+                        model_m: Matrix4::new_translation(&vector![0.0, 0.0, -3.0])
+                            * Matrix4::new_rotation(vector![0.0, -PI * 0.25, 0.0]),
+                        buf: Arc::new(
+                            self.device.create_buffer_init(&BufferInitDescriptor {
+                                label: None,
+                                contents: bytemuck::cast_slice(
+                                    drawer::structs::Point3InputArray::cube(vector![
+                                        1.0, 1.0, 1.0, 1.0
+                                    ])
+                                    .vertex_v(),
+                                ),
+                                usage: BufferUsages::VERTEX,
+                            }),
+                        ),
+                    }),
                 );
             }
             _ => (),
@@ -437,21 +318,10 @@ impl AsElementProvider for VisionManager {
         self.body_mp.remove(&id);
     }
 
-    fn update_element(&mut self, id: u64, props: &ViewProps) {
-        if let Some(body) = self.body_mp.get_mut(&id) {
-            match body.class.as_str() {
-                "ball" => {
-                    if let Some(radius) = props.props["$radius"][0].as_str() {
-                        body.look.ray_look[0].shape_matrix =
-                            Matrix3::new_scaling(radius.parse().unwrap());
-                    }
-                }
-                "quad" => {
-                    if let Some(height) = props.props["$height"][0].as_str() {
-                        body.look.ray_look[0].shape_matrix =
-                            Matrix3::new_nonuniform_scaling(&vector![1.0, height.parse().unwrap()]);
-                    }
-                }
+    fn update_element(&mut self, id: u64, view_props: &ViewProps) {
+        if let Some(_) = self.body_mp.get_mut(&id) {
+            match view_props.class.as_str() {
+                // "cube3" => {}
                 _ => (),
             }
         }
