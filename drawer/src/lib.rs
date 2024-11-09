@@ -80,8 +80,24 @@ impl ThreeLook {
 
         None
     }
+    
+    pub fn as_body_mut(&mut self) -> Option<&mut Body> {
+        if let ThreeLook::Body(buf) = self {
+            return Some(buf);
+        }
+
+        None
+    }
 
     pub fn as_light(&self) -> Option<&Light> {
+        if let ThreeLook::Light(light) = self {
+            return Some(light);
+        }
+
+        None
+    }
+    
+    pub fn as_light_mut(&mut self) -> Option<&mut Light> {
         if let ThreeLook::Light(light) = self {
             return Some(light);
         }

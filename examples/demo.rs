@@ -75,7 +75,7 @@ impl ApplicationHandler for Application {
                 root.$class = 'div';
                 root.$child = [
                         {$class: 'Vision:light3' },
-                        {$class: 'Vision:cube3' },
+                        {$class: 'Vision:cube3', $props: {position: [0.0, 0.0, -3.0]} },
                         {$class: 'Input:window', $props: {$onresize: 'await Deno.core.ops.cm_append(\"@new_size\", \"@window\", [JSON.stringify(context.data)]);'}}
                 ];
                 
@@ -126,18 +126,6 @@ impl ApplicationHandler for Application {
                     "data": {
                         "width": n_sz.width,
                         "height": n_sz.height,
-                    }
-                });
-            }
-            WindowEvent::CursorMoved {
-                device_id: _,
-                position,
-            } => {
-                let _ = self.tx_op.as_ref().unwrap().send(json::object! {
-                    "entry_name": "$onmousemove",
-                    "data": {
-                        "x": position.x,
-                        "y": position.y,
                     }
                 });
             }

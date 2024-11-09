@@ -6,7 +6,7 @@ use std::{
 
 use drawer::{Body, Light, ThreeLook};
 use error_stack::ResultExt;
-use nalgebra::{vector, Matrix4};
+use nalgebra::{point, vector, Matrix4};
 use rapier2d::prelude::{
     ColliderBuilder, IntegrationParameters, RigidBodyBuilder, RigidBodyHandle,
 };
@@ -291,8 +291,7 @@ impl AsElementProvider for VisionManager {
                 self.body_mp.insert(
                     vnode_id,
                     ThreeLook::Body(Body {
-                        model_m: Matrix4::new_translation(&vector![0.0, 0.0, -3.0])
-                            * Matrix4::new_rotation(vector![0.0, -PI * 0.25, 0.0]),
+                        model_m: Matrix4::new_rotation(vector![0.0, -PI * 0.25, 0.0]),
                         buf: Arc::new(
                             self.device.create_buffer_init(&BufferInitDescriptor {
                                 label: None,
@@ -319,9 +318,29 @@ impl AsElementProvider for VisionManager {
     }
 
     fn update_element(&mut self, id: u64, view_props: &ViewProps) {
-        if let Some(_) = self.body_mp.get_mut(&id) {
-            match view_props.class.as_str() {
-                // "cube3" => {}
+        let pos = view_props.class.find(':').unwrap();
+
+        if let Some(body) = self.body_mp.get_mut(&id) {
+            match &view_props.class[pos + 1..] {
+                "cube3" => {
+                    let body = body.as_body_mut().unwrap();
+
+                    if view_props.props["position"].is_array() {
+                        let pos = view_props.props["position"]
+                            .members()
+                            .into_iter()
+                            .map(|n| n.as_f32().unwrap())
+                            .collect::<Vec<f32>>();
+
+                        let o_origin = body.model_m.transform_point(&point![0.0, 0.0, 0.0]);
+
+                        body.model_m = Matrix4::new_translation(&vector![
+                            pos[0] - o_origin.x,
+                            pos[1] - o_origin.y,
+                            pos[2] - o_origin.z
+                        ]) * body.model_m;
+                    }
+                }
                 _ => (),
             }
         }
