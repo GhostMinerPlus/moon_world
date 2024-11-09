@@ -75,7 +75,8 @@ impl ApplicationHandler for Application {
                 root.$class = 'div';
                 root.$child = [
                         {$class: 'Vision:light3' },
-                        {$class: 'Vision:cube3' }
+                        {$class: 'Vision:cube3' },
+                        {$class: 'Input:window', $props: {$onresize: 'await Deno.core.ops.cm_append(\"@new_size\", \"@window\", [JSON.stringify(context.data)]);'}}
                 ];
                 
                 return root;"
@@ -123,8 +124,8 @@ impl ApplicationHandler for Application {
                 let _ = self.tx_op.as_ref().unwrap().send(json::object! {
                     "entry_name": "$onresize",
                     "data": {
-                        "@width": n_sz.width,
-                        "@height": n_sz.height,
+                        "width": n_sz.width,
+                        "height": n_sz.height,
                     }
                 });
             }
@@ -135,8 +136,8 @@ impl ApplicationHandler for Application {
                 let _ = self.tx_op.as_ref().unwrap().send(json::object! {
                     "entry_name": "$onmousemove",
                     "data": {
-                        "@x": position.x,
-                        "@y": position.y,
+                        "x": position.x,
+                        "y": position.y,
                     }
                 });
             }

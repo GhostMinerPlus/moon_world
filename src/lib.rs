@@ -348,29 +348,26 @@ impl AsClassManager for Engine {
 
             if class.starts_with('@') {
                 if class == "@new_size" && source == "@window" {
-                    let width_v = self.get("@width", &item_v[0]).await?;
-                    let height_v = self.get("@height", &item_v[0]).await?;
+                    let data = json::parse(&rs_2_str(&item_v)).unwrap();
 
                     unsafe { &mut *self.inner.as_ptr() }
                         .vision_manager
                         .resize(PhysicalSize {
-                            width: width_v[0].parse::<u32>().unwrap(),
-                            height: height_v[0].parse::<u32>().unwrap(),
+                            width: data["width"].as_i32().unwrap() as u32,
+                            height: data["height"].as_i32().unwrap() as u32,
                         });
 
                     return Ok(());
                 } else if class == "@new_step" && source == "@camera" {
-                    let x_v = self.get("@x", &item_v[0]).await?;
-                    let y_v = self.get("@y", &item_v[0]).await?;
-                    let z_v = self.get("@z", &item_v[0]).await?;
+                    let data = json::parse(&rs_2_str(&item_v)).unwrap();
 
                     *unsafe { &mut *self.inner.as_ptr() }
                         .vision_manager
                         .view_m_mut() =
                         Matrix4::new_translation(&vector![
-                            x_v[0].parse().unwrap(),
-                            y_v[0].parse().unwrap(),
-                            z_v[0].parse().unwrap()
+                            data["x"].as_f32().unwrap(),
+                            data["y"].as_f32().unwrap(),
+                            data["z"].as_f32().unwrap(),
                         ]) * unsafe { &*self.inner.as_ptr() }.vision_manager.view_m();
 
                     return Ok(());
