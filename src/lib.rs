@@ -369,14 +369,9 @@ impl AsClassManager for Engine {
     {
         Box::pin(async move {
             match class {
-                "$moon_world_get_pos" => {
-                    let vnode_id = self
-                        .get("$vnode_id", source)
-                        .await?
-                        .first()
-                        .unwrap()
-                        .parse::<u64>()
-                        .unwrap();
+                "@moon_world_pos" => {
+                    let vnode_id = source.parse::<u64>().unwrap();
+
                     let ele = unsafe { &*self.inner.as_ptr() }
                         .element_mp
                         .get(&vnode_id)
@@ -390,7 +385,7 @@ impl AsClassManager for Engine {
                             .unwrap()
                             .translation();
 
-                        Ok(vec![pos.x.to_string(), pos.y.to_string()])
+                        Ok(vec![pos.x.to_string(), pos.y.to_string(), pos.z.to_string()])
                     } else {
                         Err(moon_class::err::Error::NotFound).attach_printable_lazy(|| {
                             format!("not such AtomElement with id {vnode_id}")

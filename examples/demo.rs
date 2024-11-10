@@ -75,11 +75,16 @@ impl ApplicationHandler for Application {
                         str_of_value(
                             r#"const root = {};
 
+const pos = context.state.pos? context.state.pos: [0.0, 0.0, 0.0];
+const pos1 = context.state.pos1? context.state.pos1: [0.0, 0.0, 0.0];
+
 root.$class = 'div';
 root.$child = [
   {$class: 'Vision:light3', $props: {position: [0.0, 5.0, 0.0]} },
-  {$class: 'Vision:cube3', $props: {position: [0.0, 0.0, -3.0], color: [0.2, 0.4, 1.0]} },
-  {$class: 'Vision:cube3', $props: {position: [-1.0, 1.0, -3.0], color: [0.8, 0.2, 0.5]} },
+  {$class: 'Vision:cube3', $props: {position: pos, color: [0.2, 0.4, 1.0]} },
+  {$class: 'Vision:cube3', $props: {position: pos1, color: [0.6, 1.0, 0.5]} },
+  {$class: 'Physics:cube3', $props: {body_type: 'dynamic', position: [-1.0, 2.0, -3.0], $onstep: 'context.state.pos = (await Deno.core.ops.cm_get("@moon_world_pos", context.vnode_id.toString())).map(s => Number(s));return context.state;'} },
+  {$class: 'Physics:cube3', $props: {position: [-1.0, 0.0, -3.0], $onstep: 'context.state.pos1 = (await Deno.core.ops.cm_get("@moon_world_pos", context.vnode_id.toString())).map(s => Number(s));return context.state;'} },
   {
     $class: 'Input:window',
     $props: {
@@ -163,7 +168,7 @@ return root;"#
 fn main() {
     env_logger::Builder::from_env(
         env_logger::Env::default()
-            .default_filter_or("info,wgpu=error,demo=debug,moon_world=debug,view_manager=debug"),
+            .default_filter_or("info,wgpu=warn,demo=debug,moon_world=debug"),
     )
     .init();
 

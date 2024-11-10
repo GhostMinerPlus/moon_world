@@ -94,12 +94,6 @@ mod inner {
 
 pub struct PhysicsManager {
     pub physics_engine: physics::PhysicsEngine,
-    // pub on_event: Option<Rc<dyn Fn(SceneHandle, E)>>,
-    // pub on_collision_event: Option<Rc<dyn Fn(SceneHandle, CollisionEvent)>>,
-    // pub on_force_event: Option<Rc<dyn Fn(SceneHandle, ContactForceEvent)>>,
-    // pub on_step: Option<Rc<dyn Fn(SceneHandle, u128)>>,
-    // pub collision_event_rx: Receiver<CollisionEvent>,
-    // pub force_event_rx: Receiver<ContactForceEvent>,
 }
 
 impl PhysicsManager {
@@ -112,15 +106,7 @@ impl PhysicsManager {
             force_sender,
         )));
 
-        Self {
-            physics_engine,
-            // on_event: None,
-            // on_step: None,
-            // on_collision_event: None,
-            // on_force_event: None,
-            // collision_event_rx,
-            // force_event_rx,
-        }
+        Self { physics_engine }
     }
 
     pub fn step(&mut self) {
@@ -131,16 +117,44 @@ impl PhysicsManager {
 impl AsElementProvider for PhysicsManager {
     type H = RigidBodyHandle;
 
-    fn create_element(&mut self, _: u64, class: &str, _props: &json::JsonValue) -> RigidBodyHandle {
+    fn create_element(&mut self, _: u64, class: &str, props: &json::JsonValue) -> RigidBodyHandle {
         match class {
-            "cube3" => inner::add_body(
-                self,
-                RigidBodyBuilder::fixed().build(),
-                vec![ColliderBuilder::cuboid(0.5, 0.5, 0.5)
-                    .translation(vector![0.5, 0.5, 0.5])
-                    .build()],
-            ),
-            _ => panic!("{class} is unsupported tag in PhysicsManager"),
+            "cube3" => {
+                log::debug!("props = {props}");
+
+                let body_type = if let Some(body_type) = props["body_type"].as_str() {
+                    body_type
+                } else {
+                    "fixed"
+                };
+
+                log::debug!("body_type = {body_type}");
+
+                let pos = if props["position"].is_array() {
+                    let pos = props["position"]
+                        .members()
+                        .into_iter()
+                        .map(|n| n.as_f32().unwrap())
+                        .collect::<Vec<f32>>();
+
+                    vector![pos[0], pos[1], pos[2]]
+                } else {
+                    vector![0.0, 0.0, 0.0]
+                };
+
+                inner::add_body(
+                    self,
+                    match body_type {
+                        "fixed" => RigidBodyBuilder::fixed().translation(pos).build(),
+                        "dynamic" => RigidBodyBuilder::dynamic().translation(pos).build(),
+                        _ => panic!("unsupported body type '{body_type}'"),
+                    },
+                    vec![ColliderBuilder::cuboid(0.5, 0.5, 0.5)
+                        .translation(vector![0.5, 0.5, -0.5])
+                        .build()],
+                )
+            }
+            _ => panic!("unsupported tag '{class}' in PhysicsManager"),
         }
     }
 
