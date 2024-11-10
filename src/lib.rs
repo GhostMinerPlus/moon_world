@@ -326,9 +326,9 @@ impl AsClassManager for Engine {
                         .vision_manager
                         .view_m_mut() =
                         Matrix4::new_translation(&vector![
-                            data["x"].as_f32().unwrap(),
-                            data["y"].as_f32().unwrap(),
-                            data["z"].as_f32().unwrap(),
+                            -data["x"].as_f32().unwrap(),
+                            -data["y"].as_f32().unwrap(),
+                            -data["z"].as_f32().unwrap(),
                         ]) * unsafe { &*self.inner.as_ptr() }.vision_manager.view_m();
 
                     return Ok(());
