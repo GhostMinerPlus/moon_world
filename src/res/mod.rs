@@ -7,10 +7,10 @@ use std::{
 use drawer::{Body, Light, ThreeLook};
 use error_stack::ResultExt;
 use nalgebra::{point, vector, Matrix4};
-use rapier2d::prelude::{
+use rapier3d::prelude::{
     ColliderBuilder, IntegrationParameters, RigidBodyBuilder, RigidBodyHandle,
 };
-use view_manager::{AsElementProvider, ViewProps};
+use view_manager::AsElementProvider;
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     BufferUsages, SurfaceTexture,
@@ -23,21 +23,21 @@ use super::physics;
 mod inner {
     use std::sync::mpsc::Sender;
 
-    use rapier2d::prelude::{
+    use rapier3d::prelude::{
         Collider, ContactForceEvent, EventHandler, RigidBody, RigidBodyHandle,
     };
 
     use super::PhysicsManager;
 
     pub struct InnerEventHandler {
-        collision_sender: Sender<rapier2d::prelude::CollisionEvent>,
-        force_sender: Sender<rapier2d::prelude::ContactForceEvent>,
+        collision_sender: Sender<rapier3d::prelude::CollisionEvent>,
+        force_sender: Sender<rapier3d::prelude::ContactForceEvent>,
     }
 
     impl InnerEventHandler {
         pub fn new(
-            collision_sender: Sender<rapier2d::prelude::CollisionEvent>,
-            force_sender: Sender<rapier2d::prelude::ContactForceEvent>,
+            collision_sender: Sender<rapier3d::prelude::CollisionEvent>,
+            force_sender: Sender<rapier3d::prelude::ContactForceEvent>,
         ) -> Self {
             Self {
                 collision_sender,
@@ -49,10 +49,10 @@ mod inner {
     impl EventHandler for InnerEventHandler {
         fn handle_collision_event(
             &self,
-            _bodies: &rapier2d::prelude::RigidBodySet,
-            _colliders: &rapier2d::prelude::ColliderSet,
-            event: rapier2d::prelude::CollisionEvent,
-            _contact_pair: Option<&rapier2d::prelude::ContactPair>,
+            _bodies: &rapier3d::prelude::RigidBodySet,
+            _colliders: &rapier3d::prelude::ColliderSet,
+            event: rapier3d::prelude::CollisionEvent,
+            _contact_pair: Option<&rapier3d::prelude::ContactPair>,
         ) {
             let _ = self.collision_sender.send(event);
             log::debug!("sent collision_event");
@@ -61,9 +61,9 @@ mod inner {
         fn handle_contact_force_event(
             &self,
             dt: f32,
-            _bodies: &rapier2d::prelude::RigidBodySet,
-            _colliders: &rapier2d::prelude::ColliderSet,
-            contact_pair: &rapier2d::prelude::ContactPair,
+            _bodies: &rapier3d::prelude::RigidBodySet,
+            _colliders: &rapier3d::prelude::ColliderSet,
+            contact_pair: &rapier3d::prelude::ContactPair,
             total_force_magnitude: f32,
         ) {
             let result =
@@ -131,8 +131,21 @@ impl PhysicsManager {
 impl AsElementProvider for PhysicsManager {
     type H = RigidBodyHandle;
 
-    fn update_element(&mut self, _: Self::H, props: &ViewProps) {
-        match props.class.as_str() {
+    fn create_element(&mut self, _: u64, class: &str, _props: &json::JsonValue) -> RigidBodyHandle {
+        match class {
+            "cube3" => inner::add_body(
+                self,
+                RigidBodyBuilder::fixed().build(),
+                vec![ColliderBuilder::cuboid(0.5, 0.5, 0.5)
+                    .translation(vector![0.5, 0.5, 0.5])
+                    .build()],
+            ),
+            _ => panic!("{class} is unsupported tag in PhysicsManager"),
+        }
+    }
+
+    fn update_element(&mut self, _: Self::H, class: &str, _props: &json::JsonValue) {
+        match class {
             _ => (),
         }
     }
@@ -140,22 +153,6 @@ impl AsElementProvider for PhysicsManager {
     /// Let element be updated.
     fn delete_element(&mut self, h: RigidBodyHandle) {
         self.physics_engine.remove_rigid_body(h);
-    }
-
-    fn create_element(&mut self, _: u64, class: &str) -> RigidBodyHandle {
-        match class {
-            "ball" => inner::add_body(
-                self,
-                RigidBodyBuilder::fixed().build(),
-                vec![ColliderBuilder::ball(1.0).build()],
-            ),
-            "quad" => inner::add_body(
-                self,
-                RigidBodyBuilder::fixed().build(),
-                vec![ColliderBuilder::cuboid(0.5, 0.5).build()],
-            ),
-            _ => panic!(""),
-        }
     }
 }
 
@@ -269,16 +266,39 @@ impl VisionManager {
 impl AsElementProvider for VisionManager {
     type H = u64;
 
-    fn create_element(&mut self, vnode_id: u64, class: &str) -> u64 {
+    fn create_element(&mut self, vnode_id: u64, class: &str, props: &json::JsonValue) -> u64 {
         match class {
             "light3" => {
                 log::debug!("create_element: create light3 {vnode_id}");
 
+                let pos = if props["position"].is_array() {
+                    let pos = props["position"]
+                        .members()
+                        .into_iter()
+                        .map(|n| n.as_f32().unwrap())
+                        .collect::<Vec<f32>>();
+
+                    vector![pos[0], pos[1], pos[2]]
+                } else {
+                    vector![0.0, 0.0, 0.0]
+                };
+                let color = if props["color"].is_array() {
+                    let color = props["color"]
+                        .members()
+                        .into_iter()
+                        .map(|n| n.as_f32().unwrap())
+                        .collect::<Vec<f32>>();
+
+                    vector![color[0], color[1], color[2], *color.get(3).unwrap_or(&1.0)]
+                } else {
+                    vector![1.0, 1.0, 1.0, 1.0]
+                };
+
                 self.body_mp.insert(
                     vnode_id,
                     ThreeLook::Light(Light {
-                        color: vector![1.0, 1.0, 1.0, 1.0],
-                        view: Matrix4::new_translation(&vector![0.0, 5.0, 0.0])
+                        color,
+                        view: Matrix4::new_translation(&pos)
                             * Matrix4::new_rotation(vector![PI * 0.25, 0.0, 0.0]),
                         proj: drawer::WGPU_OFFSET_M
                             * Matrix4::new_orthographic(-10.0, 10.0, -10.0, 10.0, 0.0, 20.0),
@@ -288,22 +308,40 @@ impl AsElementProvider for VisionManager {
             "cube3" => {
                 log::debug!("create_element: create cube3 {vnode_id}");
 
+                let pos = if props["position"].is_array() {
+                    let pos = props["position"]
+                        .members()
+                        .into_iter()
+                        .map(|n| n.as_f32().unwrap())
+                        .collect::<Vec<f32>>();
+
+                    vector![pos[0], pos[1], pos[2]]
+                } else {
+                    vector![0.0, 0.0, 0.0]
+                };
+                let color = if props["color"].is_array() {
+                    let color = props["color"]
+                        .members()
+                        .into_iter()
+                        .map(|n| n.as_f32().unwrap())
+                        .collect::<Vec<f32>>();
+
+                    vector![color[0], color[1], color[2], *color.get(3).unwrap_or(&1.0)]
+                } else {
+                    vector![1.0, 1.0, 1.0, 1.0]
+                };
+
                 self.body_mp.insert(
                     vnode_id,
                     ThreeLook::Body(Body {
-                        model_m: Matrix4::new_rotation(vector![0.0, -PI * 0.25, 0.0]),
-                        buf: Arc::new(
-                            self.device.create_buffer_init(&BufferInitDescriptor {
-                                label: None,
-                                contents: bytemuck::cast_slice(
-                                    drawer::structs::Point3InputArray::cube(vector![
-                                        1.0, 1.0, 1.0, 1.0
-                                    ])
-                                    .vertex_v(),
-                                ),
-                                usage: BufferUsages::VERTEX,
-                            }),
-                        ),
+                        model_m: Matrix4::new_translation(&pos),
+                        buf: Arc::new(self.device.create_buffer_init(&BufferInitDescriptor {
+                            label: None,
+                            contents: bytemuck::cast_slice(
+                                drawer::structs::Point3InputArray::cube(color).vertex_v(),
+                            ),
+                            usage: BufferUsages::VERTEX,
+                        })),
                     }),
                 );
             }
@@ -317,16 +355,14 @@ impl AsElementProvider for VisionManager {
         self.body_mp.remove(&id);
     }
 
-    fn update_element(&mut self, id: u64, view_props: &ViewProps) {
-        let pos = view_props.class.find(':').unwrap();
-
+    fn update_element(&mut self, id: u64, class: &str, props: &json::JsonValue) {
         if let Some(body) = self.body_mp.get_mut(&id) {
-            match &view_props.class[pos + 1..] {
+            match class {
                 "cube3" => {
                     let body = body.as_body_mut().unwrap();
 
-                    if view_props.props["position"].is_array() {
-                        let pos = view_props.props["position"]
+                    if props["position"].is_array() {
+                        let pos = props["position"]
                             .members()
                             .into_iter()
                             .map(|n| n.as_f32().unwrap())
@@ -339,6 +375,30 @@ impl AsElementProvider for VisionManager {
                             pos[1] - o_origin.y,
                             pos[2] - o_origin.z
                         ]) * body.model_m;
+                    }
+
+                    if props["color"].is_array() {
+                        let color = props["color"]
+                            .members()
+                            .into_iter()
+                            .map(|n| n.as_f32().unwrap())
+                            .collect::<Vec<f32>>();
+
+                        body.buf = Arc::new(
+                            self.device.create_buffer_init(&BufferInitDescriptor {
+                                label: None,
+                                contents: bytemuck::cast_slice(
+                                    drawer::structs::Point3InputArray::cube(vector![
+                                        color[0],
+                                        color[1],
+                                        color[2],
+                                        *color.get(3).unwrap_or(&1.0)
+                                    ])
+                                    .vertex_v(),
+                                ),
+                                usage: BufferUsages::VERTEX,
+                            }),
+                        );
                     }
                 }
                 _ => (),
@@ -358,7 +418,7 @@ impl InputProvider {
 impl AsElementProvider for InputProvider {
     type H = u64;
 
-    fn update_element(&mut self, id: Self::H, _props: &ViewProps) {
+    fn update_element(&mut self, id: Self::H, _class: &str, _props: &json::JsonValue) {
         log::debug!("update_element: {id}")
     }
 
@@ -366,7 +426,7 @@ impl AsElementProvider for InputProvider {
         log::debug!("delete_element: {id}")
     }
 
-    fn create_element(&mut self, vnode_id: u64, class: &str) -> Self::H {
+    fn create_element(&mut self, vnode_id: u64, class: &str, _props: &json::JsonValue) -> Self::H {
         log::debug!("create_element: vnode_id = {vnode_id}, class = {class}");
 
         vnode_id

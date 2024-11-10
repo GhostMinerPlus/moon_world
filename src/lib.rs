@@ -5,7 +5,7 @@ use deno_cm::CmRuntime;
 use error_stack::ResultExt;
 use moon_class::{util::rs_2_str, AsClassManager, Fu};
 use nalgebra::{vector, Matrix4};
-use rapier2d::prelude::{IntegrationParameters, RigidBodyHandle};
+use rapier3d::prelude::{IntegrationParameters, RigidBodyHandle};
 use view_manager::{AsElementProvider, AsViewManager, VNode, ViewProps};
 
 use std::{cell::RefCell, collections::HashMap, future::Future, pin::Pin, rc::Rc};
@@ -427,7 +427,7 @@ impl AsElementProvider for Engine {
     type H = u64;
 
     /// Element generator, let the variable be id of the new element which consists of physics, vision and audio.
-    fn create_element(&mut self, vnode_id: u64, class: &str) -> u64 {
+    fn create_element(&mut self, vnode_id: u64, class: &str, props: &json::JsonValue) -> u64 {
         let (prefix, suffix) = match class.find(':') {
             Some(pos) => (&class[0..pos], &class[pos + 1..]),
             None => ("", class),
@@ -437,17 +437,17 @@ impl AsElementProvider for Engine {
             "Physics" => AtomElement::Physics(
                 unsafe { &mut *self.inner.as_ptr() }
                     .physics_manager
-                    .create_element(vnode_id, suffix),
+                    .create_element(vnode_id, suffix, props),
             ),
             "Vision" => AtomElement::Vision(
                 unsafe { &mut *self.inner.as_ptr() }
                     .vision_manager
-                    .create_element(vnode_id, suffix),
+                    .create_element(vnode_id, suffix, props),
             ),
             "Input" => AtomElement::Input(
                 unsafe { &mut *self.inner.as_ptr() }
                     .input_provider
-                    .create_element(vnode_id, suffix),
+                    .create_element(vnode_id, suffix, props),
             ),
             _ => {
                 return vnode_id;
@@ -480,15 +480,20 @@ impl AsElementProvider for Engine {
     }
 
     /// Let the element specified by the id be updated by this props.
-    fn update_element(&mut self, id: u64, props: &ViewProps) {
+    fn update_element(&mut self, id: u64, class: &str, props: &json::JsonValue) {
+        let (_, suffix) = match class.find(':') {
+            Some(pos) => (&class[0..pos], &class[pos + 1..]),
+            None => ("", class),
+        };
+
         if let Some(atom_ele) = unsafe { &mut *self.inner.as_ptr() }.element_mp.get_mut(&id) {
             match atom_ele {
                 AtomElement::Audio(_) => todo!(),
                 AtomElement::Physics(rigid_body_handle) => {
                     unsafe { &mut *self.inner.as_ptr() }
                         .physics_manager
-                        .update_element(*rigid_body_handle, props);
-                    if let Some(watcher) = props.props["$watcher"][0].as_str() {
+                        .update_element(*rigid_body_handle, suffix, props);
+                    if let Some(watcher) = props["$watcher"][0].as_str() {
                         if watcher == "true" {
                             unsafe { &mut *self.inner.as_ptr() }.watcher_binding_body_id = id;
                         }
@@ -497,12 +502,12 @@ impl AsElementProvider for Engine {
                 AtomElement::Vision(id) => {
                     unsafe { &mut *self.inner.as_ptr() }
                         .vision_manager
-                        .update_element(*id, props);
+                        .update_element(*id, suffix, props);
                 }
                 AtomElement::Input(id) => {
                     unsafe { &mut *self.inner.as_ptr() }
                         .input_provider
-                        .update_element(*id, props);
+                        .update_element(*id, suffix, props);
                 }
             }
         }

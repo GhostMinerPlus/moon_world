@@ -137,6 +137,8 @@ impl ViewRenderer {
             usage: BufferUsages::UNIFORM,
         });
 
+        let mut is_first = true;
+
         for body in body_v {
             let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
@@ -161,14 +163,22 @@ impl ViewRenderer {
                         view: &view_texture_view,
                         resolve_target: None,
                         ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(Color::TRANSPARENT),
+                            load: if is_first {
+                                wgpu::LoadOp::Clear(Color::TRANSPARENT)
+                            } else {
+                                wgpu::LoadOp::Load
+                            },
                             store: wgpu::StoreOp::Store,
                         },
                     })],
                     depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
                         view: &depth_texture_view,
                         depth_ops: Some(Operations {
-                            load: wgpu::LoadOp::Clear(1.0),
+                            load: if is_first {
+                                wgpu::LoadOp::Clear(1.0)
+                            } else {
+                                wgpu::LoadOp::Load
+                            },
                             store: wgpu::StoreOp::Store,
                         }),
                         stencil_ops: None,
@@ -209,6 +219,7 @@ impl ViewRenderer {
             }
 
             queue.submit(std::iter::once(encoder.finish()));
+            is_first = false;
         }
 
         &self.view_texture

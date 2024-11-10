@@ -1,12 +1,14 @@
 use std::{
     sync::mpsc::{channel, Sender},
     thread,
+    time::Duration,
 };
 
 use deno_cm::CmRuntime;
 use error_stack::ResultExt;
 use moon_class::{util::str_of_value, ClassManager};
 use moon_world::{err, EngineBuilder};
+use tokio::time::sleep;
 use view_manager::ViewProps;
 use winit::{
     application::ApplicationHandler,
@@ -71,15 +73,23 @@ impl ApplicationHandler for Application {
     await Deno.core.ops.cm_append("view", "Main", [{}]);
             "#,
                         str_of_value(
-                            "const root = {};
-                root.$class = 'div';
-                root.$child = [
-                        {$class: 'Vision:light3' },
-                        {$class: 'Vision:cube3', $props: {position: [0.0, 0.0, -3.0]} },
-                        {$class: 'Input:window', $props: {$onresize: 'await Deno.core.ops.cm_append(\"@new_size\", \"@window\", [JSON.stringify(context.data)]);'}}
-                ];
-                
-                return root;"
+                            r#"const root = {};
+
+root.$class = 'div';
+root.$child = [
+  {$class: 'Vision:light3', $props: {position: [0.0, 5.0, 0.0]} },
+  {$class: 'Vision:cube3', $props: {position: [0.0, 0.0, -3.0], color: [0.2, 0.4, 1.0]} },
+  {$class: 'Vision:cube3', $props: {position: [-1.0, 1.0, -3.0], color: [0.8, 0.2, 0.5]} },
+  {
+    $class: 'Input:window',
+    $props: {
+      $onresize: 'await Deno.core.ops.cm_append("@new_size", "@window", [JSON.stringify(context.data)]);',
+      $onkeydown: 'const step = {x: 0, y: 0, z: 0};if (context.data.key == "w") { step.y += 0.1; } else if (context.data.key == "s") { step.y -= 0.1; }await Deno.core.ops.cm_append("@new_step", "@camera", [JSON.stringify(step)]);'
+    }
+  }
+];
+
+return root;"#
                         )
                     ))
                     .await
@@ -109,6 +119,8 @@ impl ApplicationHandler for Application {
                     engine.step(&mut cm_runtime).await.unwrap();
 
                     engine.render().unwrap();
+
+                    sleep(Duration::from_millis(10)).await;
                 }
             });
         });
@@ -128,6 +140,20 @@ impl ApplicationHandler for Application {
                         "height": n_sz.height,
                     }
                 });
+            }
+            WindowEvent::KeyboardInput {
+                device_id: _,
+                event,
+                is_synthetic: _,
+            } => {
+                if event.state.is_pressed() {
+                    let _ = self.tx_op.as_ref().unwrap().send(json::object! {
+                        "entry_name": "$onkeydown",
+                        "data": {
+                            "key": event.logical_key.to_text(),
+                        }
+                    });
+                }
             }
             _ => (),
         }

@@ -123,6 +123,8 @@ impl LightMappingBuilder {
         let color_view = color_texture.create_view(&wgpu::TextureViewDescriptor::default());
         let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
+        let mut is_first = true;
+
         for body in body_v {
             let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
@@ -140,14 +142,22 @@ impl LightMappingBuilder {
                         view: &color_view,
                         resolve_target: None,
                         ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(Color::TRANSPARENT),
+                            load: if is_first {
+                                wgpu::LoadOp::Clear(Color::TRANSPARENT)
+                            } else {
+                                wgpu::LoadOp::Load
+                            },
                             store: wgpu::StoreOp::Store,
                         },
                     })],
                     depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
                         view: &depth_view,
                         depth_ops: Some(wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(1.0),
+                            load: if is_first {
+                                wgpu::LoadOp::Clear(1.0)
+                            } else {
+                                wgpu::LoadOp::Load
+                            },
                             store: wgpu::StoreOp::Store,
                         }),
                         stencil_ops: None,
@@ -184,6 +194,8 @@ impl LightMappingBuilder {
             }
 
             queue.submit(std::iter::once(encoder.finish()));
+
+            is_first = false;
         }
 
         (color_texture, depth_texture)

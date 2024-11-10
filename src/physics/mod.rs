@@ -1,4 +1,5 @@
-use rapier2d::{parry::query::Ray, prelude::*};
+use nalgebra::Vector3;
+use rapier3d::{parry::query::Ray, prelude::*};
 
 pub struct PhysicsEngine {
     pub rigid_body_set: RigidBodySet,
@@ -6,12 +7,7 @@ pub struct PhysicsEngine {
     pub impulse_joint_set: ImpulseJointSet,
     pub multibody_joint_set: MultibodyJointSet,
 
-    gravity: nalgebra::Matrix<
-        f32,
-        nalgebra::Const<2>,
-        nalgebra::Const<1>,
-        nalgebra::ArrayStorage<f32, 2, 1>,
-    >,
+    gravity: Vector3<f32>,
     integration_parameters: IntegrationParameters,
     physics_pipeline: PhysicsPipeline,
     island_manager: IslandManager,
@@ -29,7 +25,7 @@ impl PhysicsEngine {
         let collider_set = ColliderSet::new();
         let impulse_joint_set = ImpulseJointSet::new();
         let multibody_joint_set = MultibodyJointSet::new();
-        let gravity = vector![0.0, -9.81];
+        let gravity = vector![0.0, -9.81, 0.0];
         let physics_pipeline = PhysicsPipeline::new();
         let island_manager = IslandManager::new();
         let broad_phase = DefaultBroadPhase::new();

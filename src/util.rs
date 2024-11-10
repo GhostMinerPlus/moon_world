@@ -1,6 +1,6 @@
 //! Help the crate be a video provider, a event handler or a shape builder.
 
-use rapier2d::prelude::{Collider, GenericJoint};
+use rapier3d::prelude::{Collider, GenericJoint};
 
 pub mod shape;
 
