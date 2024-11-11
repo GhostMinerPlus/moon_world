@@ -4,7 +4,7 @@ use deno_cm::CmRuntime;
 
 use error_stack::ResultExt;
 use moon_class::{util::rs_2_str, AsClassManager, Fu};
-use nalgebra::{vector, Matrix4};
+use nalgebra::{point, vector, Matrix4};
 use rapier3d::prelude::{IntegrationParameters, RigidBodyHandle};
 use view_manager::{AsElementProvider, AsViewManager, VNode, ViewProps};
 
@@ -385,12 +385,28 @@ impl AsClassManager for Engine {
                             .unwrap()
                             .translation();
 
-                        Ok(vec![pos.x.to_string(), pos.y.to_string(), pos.z.to_string()])
+                        Ok(vec![
+                            pos.x.to_string(),
+                            pos.y.to_string(),
+                            pos.z.to_string(),
+                        ])
                     } else {
                         Err(moon_class::err::Error::NotFound).attach_printable_lazy(|| {
                             format!("not such AtomElement with id {vnode_id}")
                         })
                     }
+                }
+                "@camera_pos" => {
+                    let pos = unsafe { &*self.inner.as_ptr() }
+                        .vision_manager
+                        .view_m()
+                        .transform_point(&point![0.0, 0.0, 0.0]);
+
+                    Ok(vec![
+                        pos.x.to_string(),
+                        pos.y.to_string(),
+                        pos.z.to_string(),
+                    ])
                 }
                 _ => {
                     unsafe { &*self.inner.as_ptr() }
