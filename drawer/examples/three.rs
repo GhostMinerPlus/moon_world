@@ -107,6 +107,7 @@ fn main() {
             &queue,
             &texture.create_view(&TextureViewDescriptor::default()),
             look_v.iter().collect(),
+            texture.width() as f32 / texture.height() as f32,
         );
 
         save_texture(

@@ -199,6 +199,7 @@ impl<'a> RenderPass<'a> {
                     .filter(|op| op.is_some())
                     .map(|op| op.unwrap())
                     .collect(),
+                self.output.texture.width() as f32 / self.output.texture.height() as f32,
             )
             .change_context(err::Error::Other)?;
 

@@ -4,6 +4,7 @@ struct Vertex {
 
 struct Fragment {
     @builtin(position) position: vec4<f32>,
+    @location(0) uniform_pos: vec2<f32>,
 }
 
 @group(0) @binding(0) var<uniform> view: mat4x4<f32>;
@@ -15,6 +16,7 @@ struct Fragment {
 @group(0) @binding(4) var light_color_tex: texture_2d<f32>;
 @group(0) @binding(5) var light_depth_tex: texture_depth_2d;
 @group(0) @binding(6) var<uniform> light_p: mat4x4<f32>;
+@group(0) @binding(7) var<uniform> ratio: f32;
 
 fn f_2_f4(f: f32) -> vec4<f32> {
     let bit_shift = vec4<f32>(1.0, 10.0, 10.0 * 10.0, 10.0 * 10.0 * 10.0);
@@ -50,21 +52,35 @@ fn vs_main(in: Vertex) -> Fragment {
     var out: Fragment;
 
     out.position = in.position;
+    out.uniform_pos = in.position.xy;
 
     return out;
 }
 
 @fragment
 fn fs_main(in: Fragment) -> @location(0) vec4<f32> {
-    let crd = vec2<u32>(in.position.xy);
+    let sz = 1024.0;
+
+    let half_sz = sz * 0.5;
+
+    var f_crd = in.uniform_pos;
+
+    if (ratio > 1.0) {
+        f_crd = vec2<f32>(in.uniform_pos.x, in.uniform_pos.y / ratio);
+    } else if (ratio < 1.0) {
+        f_crd = vec2<f32>(in.uniform_pos.x * ratio, in.uniform_pos.y);
+    }
+
+    let crd = vec2<i32>(i32(f_crd.x * half_sz + half_sz), i32(-f_crd.y * half_sz + half_sz));
+
     let i_light_in_view = normalize(view * reverse_vec_from_mat(vec4<f32>(0.0, 0.0, -1.0, 0.0), light_v));
-    let uy_pt = proj * vec4<f32>(0.0, 1.0, -0.1, 1.0);
+    let uy_pt = proj * vec4<f32>(1.0, 1.0, -0.1, 1.0);
     var lightness = 0.08;
 
-    let ratio = uy_pt.y / uy_pt.w;
+    let ratio_xy = uy_pt.xy / uy_pt.w;
     let pos_vc = textureLoad(view_tex, crd, 0);
 
-    let income_in_view = normalize(-vec4<f32>(vec2<f32>(in.position.x / 1024.0 * 2.0 - 1.0, 1.0 - 2.0 * in.position.y / 1024.0) / ratio, -0.1, 0.0));
+    let income_in_view = normalize(-vec4<f32>(f_crd * ratio_xy, -0.1, 0.0));
     let cur_pos = vec4<f32>(pos_vc.xyz, 1.0);
     let color_in_view = f_2_f4(pos_vc.w);
 
@@ -72,7 +88,7 @@ fn fs_main(in: Fragment) -> @location(0) vec4<f32> {
 
     cur_pos_in_light_proj /= cur_pos_in_light_proj.w;
 
-    let crd_in_light = vec2<u32>((vec2<f32>(cur_pos_in_light_proj.x, -cur_pos_in_light_proj.y) * 0.5 + 0.5) * 1024.0);
+    let crd_in_light = vec2<u32>((vec2<f32>(cur_pos_in_light_proj.x, -cur_pos_in_light_proj.y) * 0.5 + 0.5) * sz);
     let cur_depth_in_light_proj = cur_pos_in_light_proj.z;
 
     let std_depth_in_light_proj = textureLoad(light_depth_tex, crd_in_light, 0);

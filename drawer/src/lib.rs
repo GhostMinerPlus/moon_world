@@ -146,6 +146,7 @@ impl ThreeDrawer {
         queue: &Queue,
         surface: &TextureView,
         look_v: Vec<&ThreeLook>,
+        ratio: f32,
     ) -> err::Result<()> {
         let mut body_v = vec![];
         let mut light_v = vec![];
@@ -189,6 +190,7 @@ impl ThreeDrawer {
             light_texture_v,
             &self.view_m,
             &self.proj_m,
+            ratio,
         )
     }
 

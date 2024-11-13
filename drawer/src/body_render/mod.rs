@@ -26,6 +26,7 @@ mod inner {
         view_texture: &TextureView,
         light_texture: &TextureView,
         light_depth_tex: &TextureView,
+        ratio: f32,
     ) {
         let body = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
@@ -64,6 +65,12 @@ mod inner {
             usage: BufferUsages::VERTEX,
         });
 
+        let ratio_buf = device.create_buffer_init(&BufferInitDescriptor {
+            label: None,
+            contents: &ratio.to_ne_bytes(),
+            usage: BufferUsages::UNIFORM,
+        });
+
         render_pass.set_bind_group(
             0,
             &device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -100,6 +107,11 @@ mod inner {
                     wgpu::BindGroupEntry {
                         binding: 6,
                         resource: light_p_buf.as_entire_binding(),
+                    },
+                    // ratio
+                    wgpu::BindGroupEntry {
+                        binding: 7,
+                        resource: ratio_buf.as_entire_binding(),
                     },
                 ],
                 label: None,
@@ -199,6 +211,17 @@ impl BodyRenderer {
                     },
                     count: None,
                 },
+                // ratio
+                wgpu::BindGroupLayoutEntry {
+                    binding: 7,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
             label: Some("light"),
         });
@@ -237,6 +260,7 @@ impl BodyRenderer {
         light_texture_v: Vec<(&Light, (Texture, Texture))>,
         view_m: &Matrix4<f32>,
         proj_m: &Matrix4<f32>,
+        ratio: f32,
     ) -> err::Result<()> {
         let view_buf = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
@@ -307,6 +331,7 @@ impl BodyRenderer {
                     &view_texture_view,
                     color_texture_view,
                     depth_tex_view,
+                    ratio,
                 );
             }
         }
