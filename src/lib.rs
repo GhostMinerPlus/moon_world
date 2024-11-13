@@ -99,30 +99,28 @@ impl EngineBuilder {
         let adapter = self
             .instance
             .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
+                power_preference: wgpu::PowerPreference::HighPerformance,
                 compatible_surface: Some(&self.surface),
                 force_fallback_adapter: false,
             })
             .await
             .ok_or(err::Error::NotFound)?;
 
-        let (device, queue) = {
-            adapter
-                .request_device(
-                    &wgpu::DeviceDescriptor {
-                        required_features: wgpu::Features::MAPPABLE_PRIMARY_BUFFERS
-                            | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
-                        // WebGL doesn't support all of wgpu's features, so if
-                        // we're building for the web we'll have to disable some.
-                        required_limits: wgpu::Limits::default(),
-                        label: None,
-                        memory_hints: wgpu::MemoryHints::Performance,
-                    },
-                    None, // Trace path
-                )
-                .await
-                .change_context(err::Error::Other)?
-        };
+        let (device, queue) = adapter
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    required_features: wgpu::Features::MAPPABLE_PRIMARY_BUFFERS
+                        | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
+                    // WebGL doesn't support all of wgpu's features, so if
+                    // we're building for the web we'll have to disable some.
+                    required_limits: wgpu::Limits::default(),
+                    label: None,
+                    memory_hints: wgpu::MemoryHints::Performance,
+                },
+                None, // Trace path
+            )
+            .await
+            .change_context(err::Error::Other)?;
 
         log::debug!("found device: {:?}", device);
 
@@ -295,8 +293,6 @@ impl AsClassManager for Engine {
                     return Ok(());
                 } else if class == "@new_step" && source == "@camera" {
                     let data = json::parse(&rs_2_str(&item_v)).unwrap();
-
-                    log::debug!("@new_step: data = {data}");
 
                     *self.vision_manager.view_m_mut() = Matrix4::new_translation(&vector![
                         -data["$x"][0].as_str().unwrap().parse::<f32>().unwrap(),
