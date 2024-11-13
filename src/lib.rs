@@ -296,6 +296,8 @@ impl AsClassManager for Engine {
                 } else if class == "@new_step" && source == "@camera" {
                     let data = json::parse(&rs_2_str(&item_v)).unwrap();
 
+                    log::debug!("@new_step: data = {data}");
+
                     *self.vision_manager.view_m_mut() = Matrix4::new_translation(&vector![
                         -data["$x"][0].as_str().unwrap().parse::<f32>().unwrap(),
                         -data["$y"][0].as_str().unwrap().parse::<f32>().unwrap(),

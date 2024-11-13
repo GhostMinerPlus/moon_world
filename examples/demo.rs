@@ -115,27 +115,40 @@ impl ApplicationHandler for Application {
                 $props: {
                     $onresize: <#dump($data()) = @new_size(@window);>,
                     $onkeydown: <
+                        0.0 = $x($step);
+                        0.0 = $y($step);
+                        0.0 = $z($step);
+
                         [
                             {
                                 $case: <#inner({ $left: w, $right: $key($data())}) := $result();>,
-                                $then: <0.1 = $y($step);>
+                                $then: <-0.1 := $z($step);>
                             },
                             {
                                 $case: <#inner({ $left: s, $right: $key($data())}) := $result();>,
-                                $then: <-0.1 = $y($step);>
+                                $then: <0.1 := $z($step);>
                             },
                             {
-                                $case: <1 := $result();>,
-                                $then: <0.0 = $y($step);>
+                                $case: <#inner({ $left: a, $right: $key($data())}) := $result();>,
+                                $then: <-0.1 := $x($step);>
+                            },
+                            {
+                                $case: <#inner({ $left: d, $right: $key($data())}) := $result();>,
+                                $then: <0.1 := $x($step);>
+                            },
+                            {
+                                $case: <#inner({ $left: c, $right: $key($data())}) := $result();>,
+                                $then: <-0.1 := $y($step);>
+                            },
+                            {
+                                $case: <#inner({ $left: " ", $right: $key($data())}) := $result();>,
+                                $then: <0.1 := $y($step);>
                             }
                         ] = $switch();
 
-                        0.0 = $x($step);
-                        0.0 = $z($step);
-
                         #dump($step) = @new_step(@camera);
 
-                        $() := $result();
+                        [] := $result();
                     >
                 }
             }
