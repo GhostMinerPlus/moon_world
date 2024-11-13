@@ -1,14 +1,12 @@
 //! imported => [Engine] = avaliable to render
 
-use deno_cm::CmRuntime;
-
 use error_stack::ResultExt;
 use moon_class::{util::rs_2_str, AsClassManager, Fu};
 use nalgebra::{point, vector, Matrix4};
 use rapier3d::prelude::{IntegrationParameters, RigidBodyHandle};
 use view_manager::{AsElementProvider, AsViewManager, VNode, ViewProps};
 
-use std::{cell::RefCell, collections::HashMap, future::Future, pin::Pin, rc::Rc};
+use std::{collections::HashMap, future::Future, pin::Pin};
 use wgpu::{Instance, Surface};
 
 use winit::{dpi::PhysicalSize, window::Window};
@@ -19,10 +17,9 @@ mod inner {
     use std::collections::HashMap;
 
     use error_stack::ResultExt;
-    use moon_class::AsClassManager;
     use view_manager::VNode;
 
-    use crate::{err, res};
+    use crate::err;
 
     use super::{res::RenderPass, AtomElement};
 
@@ -62,18 +59,6 @@ mod inner {
 
             Ok(())
         }
-    }
-
-    pub struct InnerEngine {
-        pub unique_id: u64,
-        pub vnode_mp: HashMap<u64, VNode>,
-        pub watcher_binding_body_id: u64,
-        pub element_mp: HashMap<u64, AtomElement>,
-
-        pub data_manager: Box<dyn AsClassManager>,
-        pub physics_manager: res::PhysicsManager,
-        pub vision_manager: res::VisionManager,
-        pub input_provider: res::InputProvider,
     }
 }
 
@@ -190,9 +175,16 @@ pub enum AtomElement {
 /// stepped => time = next time
 ///
 /// rendered => frame = next frame
-#[derive(Clone)]
 pub struct Engine {
-    inner: Rc<RefCell<inner::InnerEngine>>,
+    unique_id: u64,
+    vnode_mp: HashMap<u64, VNode>,
+    watcher_binding_body_id: u64,
+    element_mp: HashMap<u64, AtomElement>,
+
+    data_manager: Box<dyn AsClassManager>,
+    physics_manager: res::PhysicsManager,
+    vision_manager: res::VisionManager,
+    input_provider: res::InputProvider,
 }
 
 impl Engine {
@@ -203,34 +195,29 @@ impl Engine {
         vision_manager: res::VisionManager,
     ) -> Self {
         Self {
-            inner: Rc::new(RefCell::new(inner::InnerEngine {
-                unique_id: 0,
-                vnode_mp: HashMap::new(),
-                watcher_binding_body_id: 0,
-                element_mp: HashMap::new(),
-                data_manager: dm,
-                physics_manager,
-                vision_manager,
-                input_provider: res::InputProvider::new(),
-            })),
+            unique_id: 0,
+            vnode_mp: HashMap::new(),
+            watcher_binding_body_id: 0,
+            element_mp: HashMap::new(),
+            data_manager: dm,
+            physics_manager,
+            vision_manager,
+            input_provider: res::InputProvider::new(),
         }
     }
 
-    pub async fn init(&mut self, cm_runtime: &mut CmRuntime, entry: ViewProps) {
+    pub async fn init(&mut self, entry: ViewProps) {
         let root_id = self.new_vnode(0);
-        self.apply_props(cm_runtime, root_id, &entry, 0, true)
-            .await
-            .unwrap();
+        self.apply_props(root_id, &entry, 0, true).await.unwrap();
     }
 
     /// called => the event = handled[]
     pub async fn event_handler(
         &mut self,
-        cm_runtime: &mut CmRuntime,
         entry_name: &str,
         data: &json::JsonValue,
     ) -> err::Result<()> {
-        for id in unsafe { &*self.inner.as_ptr() }
+        for id in self
             .element_mp
             .iter()
             .filter(|(_, ele)| {
@@ -243,7 +230,7 @@ impl Engine {
             .collect::<Vec<u64>>()
         {
             let _ = self
-                .event_entry(cm_runtime, id, entry_name, data)
+                .event_entry(id, entry_name, data)
                 .await
                 .change_context(err::Error::Other)?;
         }
@@ -252,10 +239,10 @@ impl Engine {
     }
 
     /// called => the engine = stepped
-    pub async fn step(&mut self, cm_runtime: &mut CmRuntime) -> err::Result<()> {
-        unsafe { &mut *self.inner.as_ptr() }.physics_manager.step();
+    pub async fn step(&mut self) -> err::Result<()> {
+        self.physics_manager.step();
 
-        for id in unsafe { &*self.inner.as_ptr() }
+        for id in self
             .element_mp
             .iter()
             .filter(|(_, ele)| {
@@ -267,9 +254,7 @@ impl Engine {
             .map(|(id, _)| *id)
             .collect::<Vec<u64>>()
         {
-            let _ = self
-                .event_entry(cm_runtime, id, "$onstep", &json::Null)
-                .await;
+            let _ = self.event_entry(id, "$onstep", &json::Null).await;
         }
 
         Ok(())
@@ -277,16 +262,9 @@ impl Engine {
 
     /// called => the engine = rendered
     pub fn render(&mut self) -> err::Result<()> {
-        let mut rp = unsafe { &mut *self.inner.as_ptr() }
-            .vision_manager
-            .render_pass()?;
+        let mut rp = self.vision_manager.render_pass()?;
 
-        inner::render_vnode(
-            &unsafe { &*self.inner.as_ptr() }.vnode_mp,
-            &unsafe { &*self.inner.as_ptr() }.element_mp,
-            &mut rp,
-            0,
-        )?;
+        inner::render_vnode(&self.vnode_mp, &self.element_mp, &mut rp, 0)?;
 
         rp.render()
     }
@@ -305,40 +283,28 @@ impl AsClassManager for Engine {
         'a2: 'f,
     {
         Box::pin(async move {
-            log::debug!("append: {} = {class}[{source}]", item_v[0]);
+            log::debug!("append: {:?} = {class}[{source}]", item_v);
 
             if class.starts_with('@') {
                 if class == "@new_size" && source == "@window" {
-                    let data = json::parse(&rs_2_str(&item_v)).unwrap();
-
-                    unsafe { &mut *self.inner.as_ptr() }
-                        .vision_manager
-                        .resize(PhysicalSize {
-                            width: data["width"].as_i32().unwrap() as u32,
-                            height: data["height"].as_i32().unwrap() as u32,
-                        });
+                    self.vision_manager.resize(PhysicalSize {
+                        width: item_v[0].parse().unwrap(),
+                        height: item_v[1].parse().unwrap(),
+                    });
 
                     return Ok(());
                 } else if class == "@new_step" && source == "@camera" {
-                    let data = json::parse(&rs_2_str(&item_v)).unwrap();
-
-                    *unsafe { &mut *self.inner.as_ptr() }
-                        .vision_manager
-                        .view_m_mut() =
-                        Matrix4::new_translation(&vector![
-                            -data["x"].as_f32().unwrap(),
-                            -data["y"].as_f32().unwrap(),
-                            -data["z"].as_f32().unwrap(),
-                        ]) * unsafe { &*self.inner.as_ptr() }.vision_manager.view_m();
+                    *self.vision_manager.view_m_mut() = Matrix4::new_translation(&vector![
+                        -item_v[0].parse::<f32>().unwrap(),
+                        -item_v[1].parse::<f32>().unwrap(),
+                        -item_v[2].parse::<f32>().unwrap(),
+                    ]) * self.vision_manager.view_m();
 
                     return Ok(());
                 }
             }
 
-            unsafe { &mut *self.inner.as_ptr() }
-                .data_manager
-                .append(class, source, item_v)
-                .await
+            self.data_manager.append(class, source, item_v).await
         })
     }
 
@@ -352,9 +318,7 @@ impl AsClassManager for Engine {
         'a1: 'f,
         'a2: 'f,
     {
-        unsafe { &mut *self.inner.as_ptr() }
-            .data_manager
-            .clear(class, source)
+        self.data_manager.clear(class, source)
     }
 
     fn get<'a, 'a1, 'a2, 'f>(
@@ -372,12 +336,9 @@ impl AsClassManager for Engine {
                 "@moon_world_pos" => {
                     let vnode_id = source.parse::<u64>().unwrap();
 
-                    let ele = unsafe { &*self.inner.as_ptr() }
-                        .element_mp
-                        .get(&vnode_id)
-                        .unwrap();
+                    let ele = self.element_mp.get(&vnode_id).unwrap();
                     if let AtomElement::Physics(h) = ele {
-                        let pos = unsafe { &*self.inner.as_ptr() }
+                        let pos = self
                             .physics_manager
                             .physics_engine
                             .rigid_body_set
@@ -397,7 +358,7 @@ impl AsClassManager for Engine {
                     }
                 }
                 "@camera_pos" => {
-                    let pos = unsafe { &*self.inner.as_ptr() }
+                    let pos = self
                         .vision_manager
                         .view_m()
                         .transform_point(&point![0.0, 0.0, 0.0]);
@@ -408,12 +369,7 @@ impl AsClassManager for Engine {
                         pos.z.to_string(),
                     ])
                 }
-                _ => {
-                    unsafe { &*self.inner.as_ptr() }
-                        .data_manager
-                        .get(class, source)
-                        .await
-                }
+                _ => self.data_manager.get(class, source).await,
             }
         })
     }
@@ -428,9 +384,7 @@ impl AsClassManager for Engine {
         'a1: 'f,
         'a2: 'f,
     {
-        unsafe { &*self.inner.as_ptr() }
-            .data_manager
-            .get_source(target, class)
+        self.data_manager.get_source(target, class)
     }
 }
 
@@ -445,47 +399,35 @@ impl AsElementProvider for Engine {
         };
 
         let atom_element = match prefix {
-            "Physics" => AtomElement::Physics(
-                unsafe { &mut *self.inner.as_ptr() }
-                    .physics_manager
-                    .create_element(vnode_id, suffix, props),
-            ),
-            "Vision" => AtomElement::Vision(
-                unsafe { &mut *self.inner.as_ptr() }
-                    .vision_manager
-                    .create_element(vnode_id, suffix, props),
-            ),
-            "Input" => AtomElement::Input(
-                unsafe { &mut *self.inner.as_ptr() }
-                    .input_provider
-                    .create_element(vnode_id, suffix, props),
-            ),
+            "Physics" => {
+                AtomElement::Physics(self.physics_manager.create_element(vnode_id, suffix, props))
+            }
+            "Vision" => {
+                AtomElement::Vision(self.vision_manager.create_element(vnode_id, suffix, props))
+            }
+            "Input" => {
+                AtomElement::Input(self.input_provider.create_element(vnode_id, suffix, props))
+            }
             _ => {
                 return vnode_id;
             }
         };
 
-        unsafe { &mut *self.inner.as_ptr() }
-            .element_mp
-            .insert(vnode_id, atom_element);
+        self.element_mp.insert(vnode_id, atom_element);
 
         vnode_id
     }
 
     /// Let the element specified by the id be deleted.
     fn delete_element(&mut self, id: u64) {
-        if let Some(atom_ele) = unsafe { &mut *self.inner.as_ptr() }.element_mp.remove(&id) {
+        if let Some(atom_ele) = self.element_mp.remove(&id) {
             match atom_ele {
                 AtomElement::Audio(_) => todo!(),
-                AtomElement::Physics(rigid_body_handle) => unsafe { &mut *self.inner.as_ptr() }
-                    .physics_manager
-                    .delete_element(rigid_body_handle),
-                AtomElement::Vision(id) => unsafe { &mut *self.inner.as_ptr() }
-                    .vision_manager
-                    .delete_element(id),
-                AtomElement::Input(id) => unsafe { &mut *self.inner.as_ptr() }
-                    .input_provider
-                    .delete_element(id),
+                AtomElement::Physics(rigid_body_handle) => {
+                    self.physics_manager.delete_element(rigid_body_handle)
+                }
+                AtomElement::Vision(id) => self.vision_manager.delete_element(id),
+                AtomElement::Input(id) => self.input_provider.delete_element(id),
             }
         }
     }
@@ -497,28 +439,23 @@ impl AsElementProvider for Engine {
             None => ("", class),
         };
 
-        if let Some(atom_ele) = unsafe { &mut *self.inner.as_ptr() }.element_mp.get_mut(&id) {
+        if let Some(atom_ele) = self.element_mp.get_mut(&id) {
             match atom_ele {
                 AtomElement::Audio(_) => todo!(),
                 AtomElement::Physics(rigid_body_handle) => {
-                    unsafe { &mut *self.inner.as_ptr() }
-                        .physics_manager
+                    self.physics_manager
                         .update_element(*rigid_body_handle, suffix, props);
                     if let Some(watcher) = props["$watcher"][0].as_str() {
                         if watcher == "true" {
-                            unsafe { &mut *self.inner.as_ptr() }.watcher_binding_body_id = id;
+                            self.watcher_binding_body_id = id;
                         }
                     }
                 }
                 AtomElement::Vision(id) => {
-                    unsafe { &mut *self.inner.as_ptr() }
-                        .vision_manager
-                        .update_element(*id, suffix, props);
+                    self.vision_manager.update_element(*id, suffix, props);
                 }
                 AtomElement::Input(id) => {
-                    unsafe { &mut *self.inner.as_ptr() }
-                        .input_provider
-                        .update_element(*id, suffix, props);
+                    self.input_provider.update_element(*id, suffix, props);
                 }
             }
         }
@@ -545,23 +482,21 @@ impl AsViewManager for Engine {
     }
 
     fn get_vnode(&self, id: &u64) -> Option<&VNode> {
-        unsafe { &*self.inner.as_ptr() }.vnode_mp.get(id)
+        self.vnode_mp.get(id)
     }
 
     fn get_vnode_mut(&mut self, id: &u64) -> Option<&mut VNode> {
-        unsafe { &mut *self.inner.as_ptr() }.vnode_mp.get_mut(id)
+        self.vnode_mp.get_mut(id)
     }
 
     fn new_vnode(&mut self, context: u64) -> u64 {
-        let new_id = unsafe { &*self.inner.as_ptr() }.unique_id;
-        unsafe { &mut *self.inner.as_ptr() }.unique_id += 1;
-        unsafe { &mut *self.inner.as_ptr() }
-            .vnode_mp
-            .insert(new_id, VNode::new(context));
+        let new_id = self.unique_id;
+        self.unique_id += 1;
+        self.vnode_mp.insert(new_id, VNode::new(context));
         new_id
     }
 
     fn rm_vnode(&mut self, id: u64) -> Option<VNode> {
-        unsafe { &mut *self.inner.as_ptr() }.vnode_mp.remove(&id)
+        self.vnode_mp.remove(&id)
     }
 }

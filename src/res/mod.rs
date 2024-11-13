@@ -122,7 +122,7 @@ impl AsElementProvider for PhysicsManager {
             "cube3" => {
                 log::debug!("props = {props}");
 
-                let body_type = if let Some(body_type) = props["body_type"].as_str() {
+                let body_type = if let Some(body_type) = props["$body_type"][0].as_str() {
                     body_type
                 } else {
                     "fixed"
@@ -130,11 +130,11 @@ impl AsElementProvider for PhysicsManager {
 
                 log::debug!("body_type = {body_type}");
 
-                let pos = if props["position"].is_array() {
-                    let pos = props["position"]
+                let pos = if props["$position"].is_array() {
+                    let pos = props["$position"]
                         .members()
                         .into_iter()
-                        .map(|n| n.as_f32().unwrap())
+                        .map(|n| n.as_str().unwrap().parse().unwrap())
                         .collect::<Vec<f32>>();
 
                     vector![pos[0], pos[1], pos[2]]
@@ -285,22 +285,22 @@ impl AsElementProvider for VisionManager {
             "light3" => {
                 log::debug!("create_element: create light3 {vnode_id}");
 
-                let pos = if props["position"].is_array() {
-                    let pos = props["position"]
+                let pos = if props["$position"].is_array() {
+                    let pos = props["$position"]
                         .members()
                         .into_iter()
-                        .map(|n| n.as_f32().unwrap())
+                        .map(|n| n.as_str().unwrap().parse().unwrap())
                         .collect::<Vec<f32>>();
 
                     vector![pos[0], pos[1], pos[2]]
                 } else {
                     vector![0.0, 0.0, 0.0]
                 };
-                let color = if props["color"].is_array() {
-                    let color = props["color"]
+                let color = if props["$color"].is_array() {
+                    let color = props["$color"]
                         .members()
                         .into_iter()
-                        .map(|n| n.as_f32().unwrap())
+                        .map(|n| n.as_str().unwrap().parse().unwrap())
                         .collect::<Vec<f32>>();
 
                     vector![color[0], color[1], color[2], *color.get(3).unwrap_or(&1.0)]
@@ -322,22 +322,22 @@ impl AsElementProvider for VisionManager {
             "cube3" => {
                 log::debug!("create_element: create cube3 {vnode_id}");
 
-                let pos = if props["position"].is_array() {
-                    let pos = props["position"]
+                let pos = if props["$position"].is_array() {
+                    let pos = props["$position"]
                         .members()
                         .into_iter()
-                        .map(|n| n.as_f32().unwrap())
+                        .map(|n| n.as_str().unwrap().parse().unwrap())
                         .collect::<Vec<f32>>();
 
                     vector![pos[0], pos[1], pos[2]]
                 } else {
                     vector![0.0, 0.0, 0.0]
                 };
-                let color = if props["color"].is_array() {
-                    let color = props["color"]
+                let color = if props["$color"].is_array() {
+                    let color = props["$color"]
                         .members()
                         .into_iter()
-                        .map(|n| n.as_f32().unwrap())
+                        .map(|n| n.as_str().unwrap().parse().unwrap())
                         .collect::<Vec<f32>>();
 
                     vector![color[0], color[1], color[2], *color.get(3).unwrap_or(&1.0)]
@@ -375,11 +375,11 @@ impl AsElementProvider for VisionManager {
                 "cube3" => {
                     let body = body.as_body_mut().unwrap();
 
-                    if props["position"].is_array() {
-                        let pos = props["position"]
+                    if props["$position"].is_array() {
+                        let pos = props["$position"]
                             .members()
                             .into_iter()
-                            .map(|n| n.as_f32().unwrap())
+                            .map(|n| n.as_str().unwrap().parse().unwrap())
                             .collect::<Vec<f32>>();
 
                         let o_origin = body.model_m.transform_point(&point![0.0, 0.0, 0.0]);
@@ -391,11 +391,11 @@ impl AsElementProvider for VisionManager {
                         ]) * body.model_m;
                     }
 
-                    if props["color"].is_array() {
-                        let color = props["color"]
+                    if props["$color"].is_array() {
+                        let color = props["$color"]
                             .members()
                             .into_iter()
-                            .map(|n| n.as_f32().unwrap())
+                            .map(|n| n.as_str().unwrap().parse().unwrap())
                             .collect::<Vec<f32>>();
 
                         body.buf = Arc::new(
