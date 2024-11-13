@@ -283,21 +283,23 @@ impl AsClassManager for Engine {
         'a2: 'f,
     {
         Box::pin(async move {
-            log::debug!("append: {:?} = {class}[{source}]", item_v);
-
             if class.starts_with('@') {
                 if class == "@new_size" && source == "@window" {
+                    let data = json::parse(&rs_2_str(&item_v)).unwrap();
+
                     self.vision_manager.resize(PhysicalSize {
-                        width: item_v[0].parse().unwrap(),
-                        height: item_v[1].parse().unwrap(),
+                        width: data["$width"][0].as_str().unwrap().parse().unwrap(),
+                        height: data["$height"][0].as_str().unwrap().parse().unwrap(),
                     });
 
                     return Ok(());
                 } else if class == "@new_step" && source == "@camera" {
+                    let data = json::parse(&rs_2_str(&item_v)).unwrap();
+
                     *self.vision_manager.view_m_mut() = Matrix4::new_translation(&vector![
-                        -item_v[0].parse::<f32>().unwrap(),
-                        -item_v[1].parse::<f32>().unwrap(),
-                        -item_v[2].parse::<f32>().unwrap(),
+                        -data["$x"][0].as_str().unwrap().parse::<f32>().unwrap(),
+                        -data["$y"][0].as_str().unwrap().parse::<f32>().unwrap(),
+                        -data["$z"][0].as_str().unwrap().parse::<f32>().unwrap(),
                     ]) * self.vision_manager.view_m();
 
                     return Ok(());

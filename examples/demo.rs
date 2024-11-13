@@ -113,28 +113,27 @@ impl ApplicationHandler for Application {
             {
                 $class: Input:window,
                 $props: {
-                    $onresize: <[$width($data()), $height($data())] = @new_size(@window); $() := $result();>,
+                    $onresize: <#dump($data()) = @new_size(@window);>,
                     $onkeydown: <
-                        0.0 = $step();
-
                         [
                             {
                                 $case: <#inner({ $left: w, $right: $key($data())}) := $result();>,
-                                $then: <0.1 = $step();>
+                                $then: <0.1 = $y($step);>
                             },
                             {
                                 $case: <#inner({ $left: s, $right: $key($data())}) := $result();>,
-                                $then: <-0.1 = $step();>
+                                $then: <-0.1 = $y($step);>
                             },
                             {
                                 $case: <1 := $result();>,
-                                $then: <0.0 = $step();>
+                                $then: <0.0 = $y($step);>
                             }
                         ] = $switch();
 
-                        0.0 = $step();
+                        0.0 = $x($step);
+                        0.0 = $z($step);
 
-                        $step() = @new_step(@camera);
+                        #dump($step) = @new_step(@camera);
 
                         $() := $result();
                     >
