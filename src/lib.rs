@@ -6,7 +6,7 @@ use nalgebra::{point, vector, Matrix4};
 use rapier3d::prelude::{IntegrationParameters, RigidBodyHandle};
 use view_manager::{AsElementProvider, AsViewManager, VNode, ViewProps};
 
-use std::{collections::HashMap, future::Future, pin::Pin};
+use std::{collections::HashMap, pin::Pin};
 use wgpu::{Instance, Surface};
 
 use winit::{dpi::PhysicalSize, window::Window};
@@ -244,8 +244,10 @@ impl Engine {
             .element_mp
             .iter()
             .filter(|(_, ele)| {
-                if let AtomElement::Physics(_) = ele {
-                    return true;
+                if let AtomElement::Physics(h) = ele {
+                    if let Some(body) = self.physics_manager.physics_engine.rigid_body_set.get(*h) {
+                        return body.is_dynamic();
+                    }
                 }
                 false
             })
@@ -299,6 +301,10 @@ impl AsClassManager for Engine {
                         -data["$y"][0].as_str().unwrap().parse::<f32>().unwrap(),
                         -data["$z"][0].as_str().unwrap().parse::<f32>().unwrap(),
                     ]) * self.vision_manager.view_m();
+
+                    self.event_handler("$oncameramove", &data)
+                        .await
+                        .change_context(moon_class::err::Error::RuntimeError)?;
 
                     return Ok(());
                 }
@@ -364,9 +370,9 @@ impl AsClassManager for Engine {
                         .transform_point(&point![0.0, 0.0, 0.0]);
 
                     Ok(vec![
-                        pos.x.to_string(),
-                        pos.y.to_string(),
-                        pos.z.to_string(),
+                        (-pos.x).to_string(),
+                        (-pos.y).to_string(),
+                        (-pos.z).to_string(),
                     ])
                 }
                 _ => self.data_manager.get(class, source).await,
@@ -466,7 +472,7 @@ impl AsViewManager for Engine {
     fn get_class_view<'a, 'a1, 'f>(
         &'a self,
         class: &'a1 str,
-    ) -> Pin<Box<dyn Future<Output = Option<String>> + 'f>>
+    ) -> Pin<Box<dyn Fu<Output = Option<String>> + 'f>>
     where
         'a: 'f,
         'a1: 'f,

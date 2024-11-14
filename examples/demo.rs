@@ -74,6 +74,42 @@ impl ApplicationHandler for Application {
                         r#"
 <
     #if({
+        $left: $position($state()),
+        $right: $position($props())
+    }) = $position();
+    #if({
+        $left: $color($props()),
+        $right: [0.2, 0.4, 1.0]
+    }) = $color();
+
+    {
+        $class: div,
+        $child: [
+            {
+                $class: Vision:cube3,
+                $props: {
+                    $position: $position(),
+                    $color: $color()
+                }
+            },
+            {
+                $class: Physics:cube3,
+                $props: {
+                    $position: $position($props()),
+                    $body_type: $body_type($props()),
+                    $onstep: <
+                        @moon_world_pos($vnode_id()) := $position($state());
+
+                        $state() = $result();
+                    >
+                }
+            }
+        ]
+    } = $result();
+> = view(Box);
+
+<
+    #if({
         $left: $pos($state()),
         $right: [0.0, 0.0, 0.0]
     }) = $pos();
@@ -86,30 +122,8 @@ impl ApplicationHandler for Application {
         $class: div,
         $child: [
             {$class: Vision:light3, $props: {$position: [0.0, 5.0, 0.0]} },
-            {$class: Vision:cube3, $props: {$position: $pos(), $color: [0.2, 0.4, 1.0]} },
-            {$class: Vision:cube3, $props: {$position: $pos1(), $color: [0.6, 1.0, 0.5]} },
-            {
-                $class: Physics:cube3,
-                $props: {
-                    $body_type: dynamic, $position: [-1.0, 2.0, -3.0],
-                    $onstep: <
-                        @moon_world_pos($vnode_id()) := $pos($state());
-
-                        $state() = $result();
-                    >
-                }
-            },
-            {
-                $class: Physics:cube3,
-                $props: {
-                    $position: [-1.0, 0.0, -3.0],
-                    $onstep: <
-                        @moon_world_pos($vnode_id()) := $pos1($state());
-                        
-                        $state() = $result();
-                    >
-                }
-            },
+            {$class: Box, $props: {$position: [-1.0, 2.0, -3.0], $color: [0.2, 0.4, 1.0], $body_type: dynamic} },
+            {$class: Box, $props: {$position: [-1.0, 0.0, -3.0], $color: [0.6, 1.0, 0.5]} },
             {
                 $class: Input:window,
                 $props: {
