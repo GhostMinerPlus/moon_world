@@ -158,7 +158,7 @@ impl ApplicationHandler for Application {
                                 $case: <#inner({ $left: " ", $right: $key($data())}) := $result();>,
                                 $then: <0.1 := $y($step);>
                             }
-                        ] = $switch();
+                        ] = @switch();
 
                         #dump($step) = @new_step(@camera);
 
