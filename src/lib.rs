@@ -283,34 +283,32 @@ impl AsClassManager for Engine {
         'a2: 'f,
     {
         Box::pin(async move {
-            if class.starts_with('@') {
-                if class == "@new_size" && source == "@window" {
-                    let data = json::parse(&rs_2_str(&item_v)).unwrap();
+            if class == "new_size" && source == "window" {
+                let data = json::parse(&rs_2_str(&item_v)).unwrap();
 
-                    self.vision_manager.resize(PhysicalSize {
-                        width: data["$width"][0].as_str().unwrap().parse().unwrap(),
-                        height: data["$height"][0].as_str().unwrap().parse().unwrap(),
-                    });
+                self.vision_manager.resize(PhysicalSize {
+                    width: data["$width"][0].as_str().unwrap().parse().unwrap(),
+                    height: data["$height"][0].as_str().unwrap().parse().unwrap(),
+                });
 
-                    return Ok(());
-                } else if class == "@new_step" && source == "@camera" {
-                    let data = json::parse(&rs_2_str(&item_v)).unwrap();
+                Ok(())
+            } else if class == "new_step" && source == "camera" {
+                let data = json::parse(&rs_2_str(&item_v)).unwrap();
 
-                    *self.vision_manager.view_m_mut() = Matrix4::new_translation(&vector![
-                        -data["$x"][0].as_str().unwrap().parse::<f32>().unwrap(),
-                        -data["$y"][0].as_str().unwrap().parse::<f32>().unwrap(),
-                        -data["$z"][0].as_str().unwrap().parse::<f32>().unwrap(),
-                    ]) * self.vision_manager.view_m();
+                *self.vision_manager.view_m_mut() = Matrix4::new_translation(&vector![
+                    -data["$x"][0].as_str().unwrap().parse::<f32>().unwrap(),
+                    -data["$y"][0].as_str().unwrap().parse::<f32>().unwrap(),
+                    -data["$z"][0].as_str().unwrap().parse::<f32>().unwrap(),
+                ]) * self.vision_manager.view_m();
 
-                    self.event_handler("$oncameramove", &data)
-                        .await
-                        .change_context(moon_class::err::Error::RuntimeError)?;
+                self.event_handler("$oncameramove", &data)
+                    .await
+                    .change_context(moon_class::err::Error::RuntimeError)?;
 
-                    return Ok(());
-                }
+                Ok(())
+            } else {
+                self.data_manager.append(class, source, item_v).await
             }
-
-            self.data_manager.append(class, source, item_v).await
         })
     }
 
@@ -339,7 +337,7 @@ impl AsClassManager for Engine {
     {
         Box::pin(async move {
             match class {
-                "#moon_world_pos" => {
+                "moon_world_pos" => {
                     let vnode_id = source.parse::<u64>().unwrap();
 
                     let ele = self.element_mp.get(&vnode_id).unwrap();
@@ -363,7 +361,7 @@ impl AsClassManager for Engine {
                         })
                     }
                 }
-                "#camera_pos" => {
+                "camera_pos" => {
                     let pos = self
                         .vision_manager
                         .view_m()
@@ -378,7 +376,7 @@ impl AsClassManager for Engine {
                 _ => self.data_manager.get(class, source).await,
             }
         })
-    }    
+    }
 }
 
 impl AsElementProvider for Engine {
