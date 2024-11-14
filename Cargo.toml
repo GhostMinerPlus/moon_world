@@ -20,7 +20,6 @@ json = "0.12"
 rapier3d = "0.22"
 
 moon_class = { git = "https://github.com/GhostMinerPlus/moon_class.git" }
-sqlite-cm = { git = "https://github.com/GhostMinerPlus/moon_class.git" }
 view-manager = { git = "https://github.com/GhostMinerPlus/view-manager.git" }
 
 drawer = { path = "drawer" }
