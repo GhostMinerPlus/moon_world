@@ -339,7 +339,7 @@ impl AsClassManager for Engine {
     {
         Box::pin(async move {
             match class {
-                "@moon_world_pos" => {
+                "#moon_world_pos" => {
                     let vnode_id = source.parse::<u64>().unwrap();
 
                     let ele = self.element_mp.get(&vnode_id).unwrap();
@@ -363,7 +363,7 @@ impl AsClassManager for Engine {
                         })
                     }
                 }
-                "@camera_pos" => {
+                "#camera_pos" => {
                     let pos = self
                         .vision_manager
                         .view_m()
