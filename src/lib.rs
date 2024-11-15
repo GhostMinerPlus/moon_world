@@ -283,7 +283,7 @@ impl AsClassManager for Engine {
         'a2: 'f,
     {
         Box::pin(async move {
-            if class == "new_size" && source == "window" {
+            if class == "@new_size" && source == "@window" {
                 let data = json::parse(&rs_2_str(&item_v)).unwrap();
 
                 self.vision_manager.resize(PhysicalSize {
@@ -292,7 +292,7 @@ impl AsClassManager for Engine {
                 });
 
                 Ok(())
-            } else if class == "new_step" && source == "camera" {
+            } else if class == "@new_step" && source == "@camera" {
                 let data = json::parse(&rs_2_str(&item_v)).unwrap();
 
                 *self.vision_manager.view_m_mut() = Matrix4::new_translation(&vector![
@@ -312,17 +312,18 @@ impl AsClassManager for Engine {
         })
     }
 
-    fn clear<'a, 'a1, 'a2, 'f>(
+    fn remove<'a, 'a1, 'a2, 'f>(
         &'a mut self,
         class: &'a1 str,
         source: &'a2 str,
+        item_v: Vec<String>,
     ) -> std::pin::Pin<Box<dyn Fu<Output = moon_class::err::Result<()>> + 'f>>
     where
         'a: 'f,
         'a1: 'f,
         'a2: 'f,
     {
-        self.data_manager.clear(class, source)
+        self.data_manager.remove(class, source, item_v)
     }
 
     fn get<'a, 'a1, 'a2, 'f>(
@@ -337,7 +338,7 @@ impl AsClassManager for Engine {
     {
         Box::pin(async move {
             match class {
-                "moon_world_pos" => {
+                "@moon_world_pos" => {
                     let vnode_id = source.parse::<u64>().unwrap();
 
                     let ele = self.element_mp.get(&vnode_id).unwrap();
@@ -361,7 +362,7 @@ impl AsClassManager for Engine {
                         })
                     }
                 }
-                "camera_pos" => {
+                "@camera_pos" => {
                     let pos = self
                         .vision_manager
                         .view_m()

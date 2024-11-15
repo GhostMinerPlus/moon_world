@@ -118,7 +118,7 @@ impl ApplicationHandler for Application {
             {
                 $class: Input:window,
                 $props: {
-                    $onresize: <#dump($data()) = new_size(window);>,
+                    $onresize: <#dump($data()) = @new_size(@window);>,
                     $onkeydown: <
                         0.0 = $x($step);
                         0.0 = $y($step);
@@ -149,9 +149,9 @@ impl ApplicationHandler for Application {
                                 $case: <#inner({ $left: " ", $right: $key($data())}) := $result();>,
                                 $then: <0.1 := $y($step);>
                             }
-                        ] = @switch();
+                        ] = #switch();
 
-                        #dump($step) = new_step(camera);
+                        #dump($step) = @new_step(@camera);
 
                         [] := $result();
                     >
