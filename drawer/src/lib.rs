@@ -4,7 +4,7 @@ use std::{
 };
 
 use image::Rgba;
-use nalgebra::{Matrix4, Vector4};
+use nalgebra::{point, Matrix4, Vector4};
 use wgpu::{
     BufferDescriptor, BufferUsages, Device, ImageCopyBuffer, ImageDataLayout, Queue, Texture,
     TextureFormat, TextureView,
@@ -59,6 +59,7 @@ mod pipeline {
 mod body_render;
 mod view_renderer;
 
+pub mod camera;
 pub mod err;
 pub mod light_mapping;
 pub mod structs;
@@ -80,7 +81,7 @@ impl ThreeLook {
 
         None
     }
-    
+
     pub fn as_body_mut(&mut self) -> Option<&mut Body> {
         if let ThreeLook::Body(buf) = self {
             return Some(buf);
@@ -96,7 +97,7 @@ impl ThreeLook {
 
         None
     }
-    
+
     pub fn as_light_mut(&mut self) -> Option<&mut Light> {
         if let ThreeLook::Light(light) = self {
             return Some(light);
@@ -120,7 +121,7 @@ pub struct Body {
 pub struct ThreeDrawer {
     light_mapping_builder: light_mapping::LightMappingBuilder,
     body_renderer: body_render::BodyRenderer,
-    view_m: Matrix4<f32>,
+    camera_state: camera::CameraState,
     proj_m: Matrix4<f32>,
     view_renderer: view_renderer::ViewRenderer,
 }
@@ -134,7 +135,7 @@ impl ThreeDrawer {
         Self {
             light_mapping_builder,
             body_renderer,
-            view_m: Matrix4::identity(),
+            camera_state: camera::CameraState::new(point![0.0, 0.0, 0.0], 0.0, 0.0),
             proj_m,
             view_renderer,
         }
@@ -173,14 +174,13 @@ impl ThreeDrawer {
                 )
             })
             .collect::<Vec<(&Light, (Texture, Texture))>>();
+
+        let view_m = self.camera_state.calc_matrix();
+
         // color and depth of view
-        let view_texture = self.view_renderer.view_renderer(
-            device,
-            queue,
-            &self.view_m,
-            &self.proj_m,
-            &body_v,
-        );
+        let view_texture =
+            self.view_renderer
+                .view_renderer(device, queue, &view_m, &self.proj_m, &body_v);
 
         self.body_renderer.body_render(
             device,
@@ -188,18 +188,18 @@ impl ThreeDrawer {
             surface,
             view_texture,
             light_texture_v,
-            &self.view_m,
+            &view_m,
             &self.proj_m,
             ratio,
         )
     }
 
-    pub fn view_m(&self) -> &Matrix4<f32> {
-        &self.view_m
+    pub fn camera_state(&self) -> &camera::CameraState {
+        &self.camera_state
     }
 
-    pub fn view_m_mut(&mut self) -> &mut Matrix4<f32> {
-        &mut self.view_m
+    pub fn camera_state_mut(&mut self) -> &mut camera::CameraState {
+        &mut self.camera_state
     }
 }
 

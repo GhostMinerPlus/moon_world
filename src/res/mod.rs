@@ -4,7 +4,7 @@ use std::{
     sync::{mpsc::channel, Arc},
 };
 
-use drawer::{Body, Light, ThreeLook};
+use drawer::{camera::CameraState, Body, Light, ThreeLook};
 use error_stack::ResultExt;
 use nalgebra::{point, vector, Matrix4};
 use rapier3d::prelude::{
@@ -269,12 +269,12 @@ impl VisionManager {
         })
     }
 
-    pub fn view_m(&self) -> &Matrix4<f32> {
-        self.three_drawer.view_m()
+    pub fn camera_state(&self) -> &CameraState {
+        self.three_drawer.camera_state()
     }
 
-    pub fn view_m_mut(&mut self) -> &mut Matrix4<f32> {
-        self.three_drawer.view_m_mut()
+    pub fn camera_state_mut(&mut self) -> &mut CameraState {
+        self.three_drawer.camera_state_mut()
     }
 }
 

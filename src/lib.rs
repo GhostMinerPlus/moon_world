@@ -2,7 +2,6 @@
 
 use error_stack::ResultExt;
 use moon_class::{util::rs_2_str, AsClassManager, Fu};
-use nalgebra::{point, vector, Matrix4};
 use rapier3d::prelude::{IntegrationParameters, RigidBodyHandle};
 use view_manager::{AsElementProvider, AsViewManager, VNode, ViewProps};
 
@@ -58,6 +57,97 @@ mod inner {
             }
 
             Ok(())
+        }
+    }
+}
+mod camera {
+    use drawer::camera::{CameraState, SAFE_FRAC_PI_2};
+    use nalgebra::Vector3;
+
+    #[derive(Debug)]
+    pub struct CameraController {
+        amount_x: f32,
+        amount_y: f32,
+        amount_z: f32,
+        rotate_horizontal: f32,
+        rotate_vertical: f32,
+        sensitivity: f32,
+        scroll: f32,
+    }
+
+    impl CameraController {
+        pub fn new(sensitivity: f32) -> Self {
+            Self {
+                amount_x: 0.0,
+                amount_y: 0.0,
+                amount_z: 0.0,
+                rotate_horizontal: 0.0,
+                rotate_vertical: 0.0,
+                sensitivity,
+                scroll: 0.0,
+            }
+        }
+
+        pub fn amount_translation(&mut self, amount_x: f32, amount_y: f32, amount_z: f32) {
+            if self.amount_x * amount_x < 0.0 {
+                self.amount_x = 0.0;
+            } else if amount_x != 0.0 {
+                self.amount_x = amount_x;
+            }
+            if self.amount_y * amount_y < 0.0 {
+                self.amount_y = 0.0;
+            } else if amount_y != 0.0 {
+                self.amount_y = amount_y;
+            }
+            if self.amount_z * amount_z < 0.0 {
+                self.amount_z = 0.0;
+            } else if amount_z != 0.0 {
+                self.amount_z = amount_z;
+            }
+        }
+
+        pub fn rorate(&mut self, mouse_dx: f32, mouse_dy: f32) {
+            self.rotate_horizontal += -mouse_dy;
+            self.rotate_vertical += mouse_dx;
+        }
+
+        pub fn update_camera(&mut self, camera_state: &mut CameraState) {
+            // Move forward/backward and left/right
+            let (yaw_sin, yaw_cos) = camera_state.yaw().sin_cos();
+            let forward = Vector3::new(yaw_sin, 0.0, yaw_cos).normalize();
+            let right = Vector3::new(yaw_cos, 0.0, -yaw_sin).normalize();
+
+            *camera_state.position_mut() += forward * self.amount_z;
+            *camera_state.position_mut() += right * self.amount_x;
+            // Move up/down. Since we don't use roll, we can just
+            // modify the y coordinate directly.
+            camera_state.position_mut().y += self.amount_y;
+
+            // Move in/out (aka. "zoom")
+            // Note: this isn't an actual zoom. The camera's position
+            // changes when zooming. I've added this to make it easier
+            // to get closer to an object you want to focus on.
+            let (pitch_sin, pitch_cos) = camera_state.pitch().sin_cos();
+            let scrollward =
+                Vector3::new(pitch_cos * yaw_cos, pitch_sin, pitch_cos * yaw_sin).normalize();
+            *camera_state.position_mut() += scrollward * self.scroll * self.sensitivity;
+            self.scroll = 0.0;
+
+            // Rotate
+            *camera_state.yaw_mut() += self.rotate_horizontal * self.sensitivity;
+            *camera_state.pitch_mut() += -self.rotate_vertical * self.sensitivity;
+
+            // If process_mouse isn't called every frame, these values
+            // will not get set to zero, and the camera will rotate
+            // when moving in a non cardinal direction.
+            self.rotate_horizontal = 0.0;
+            self.rotate_vertical = 0.0;
+            // Keep the camera's angle from going too high/low.
+            if camera_state.pitch() < -SAFE_FRAC_PI_2 {
+                *camera_state.pitch_mut() = -SAFE_FRAC_PI_2;
+            } else if camera_state.pitch() > SAFE_FRAC_PI_2 {
+                *camera_state.pitch_mut() = SAFE_FRAC_PI_2;
+            }
         }
     }
 }
@@ -183,6 +273,8 @@ pub struct Engine {
     physics_manager: res::PhysicsManager,
     vision_manager: res::VisionManager,
     input_provider: res::InputProvider,
+
+    cc: camera::CameraController,
 }
 
 impl Engine {
@@ -201,6 +293,7 @@ impl Engine {
             physics_manager,
             vision_manager,
             input_provider: res::InputProvider::new(),
+            cc: camera::CameraController::new(1.0),
         }
     }
 
@@ -257,6 +350,9 @@ impl Engine {
             let _ = self.event_entry(id, "$onstep", &json::Null).await;
         }
 
+        self.cc
+            .update_camera(self.vision_manager.camera_state_mut());
+
         Ok(())
     }
 
@@ -292,18 +388,23 @@ impl AsClassManager for Engine {
                 });
 
                 Ok(())
-            } else if class == "@new_step" && source == "@camera" {
+            } else if class == "@new_acc" && source == "@camera" {
                 let data = json::parse(&rs_2_str(&item_v)).unwrap();
 
-                *self.vision_manager.view_m_mut() = Matrix4::new_translation(&vector![
-                    -data["$x"][0].as_str().unwrap().parse::<f32>().unwrap(),
-                    -data["$y"][0].as_str().unwrap().parse::<f32>().unwrap(),
-                    -data["$z"][0].as_str().unwrap().parse::<f32>().unwrap(),
-                ]) * self.vision_manager.view_m();
+                self.cc.amount_translation(
+                    data["$x"][0].as_str().unwrap().parse::<f32>().unwrap(),
+                    data["$y"][0].as_str().unwrap().parse::<f32>().unwrap(),
+                    data["$z"][0].as_str().unwrap().parse::<f32>().unwrap(),
+                );
 
-                self.event_handler("$oncameramove", &data)
-                    .await
-                    .change_context(moon_class::err::Error::RuntimeError)?;
+                Ok(())
+            } else if class == "@new_rotation" && source == "@camera" {
+                let data = json::parse(&rs_2_str(&item_v)).unwrap();
+
+                self.cc.rorate(
+                    data["$x"][0].as_str().unwrap().parse::<f32>().unwrap(),
+                    data["$y"][0].as_str().unwrap().parse::<f32>().unwrap(),
+                );
 
                 Ok(())
             } else {
@@ -363,10 +464,7 @@ impl AsClassManager for Engine {
                     }
                 }
                 "@camera_pos" => {
-                    let pos = self
-                        .vision_manager
-                        .view_m()
-                        .transform_point(&point![0.0, 0.0, 0.0]);
+                    let pos = self.vision_manager.camera_state().position();
 
                     Ok(vec![
                         (-pos.x).to_string(),
