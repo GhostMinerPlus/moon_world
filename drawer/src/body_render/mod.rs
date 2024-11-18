@@ -1,8 +1,8 @@
 use nalgebra::Matrix4;
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    BindGroupLayout, BufferUsages, Device, Queue, RenderPipeline, Texture, TextureFormat,
-    TextureView, TextureViewDescriptor,
+    BindGroupLayout, BlendState, BufferUsages, Device, Queue, RenderPipeline, Texture,
+    TextureFormat, TextureView, TextureViewDescriptor,
 };
 
 use crate::{err, pipeline, structs::Point3Input, Light};
@@ -226,9 +226,7 @@ impl BodyRenderer {
             label: Some("light"),
         });
 
-        let render_pipeline = pipeline::build_render_pipe_line(
-            "Body Render Pipeline",
-            &device,
+        let render_pipeline = pipeline::RenderPipelineBuilder::new(
             &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: None,
                 bind_group_layouts: &[&bind_group_layout],
@@ -240,9 +238,21 @@ impl BodyRenderer {
             }),
             &[Point3Input::pos_only_desc()],
             format,
-            wgpu::PrimitiveTopology::TriangleList,
-            None,
-        );
+        )
+        .set_name(Some("Body Render Pipeline"))
+        .set_blend(Some(BlendState {
+            color: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::SrcAlpha,
+                dst_factor: wgpu::BlendFactor::DstAlpha,
+                operation: wgpu::BlendOperation::Add,
+            },
+            alpha: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::SrcAlpha,
+                dst_factor: wgpu::BlendFactor::DstAlpha,
+                operation: wgpu::BlendOperation::Max,
+            },
+        }))
+        .build(device);
 
         Self {
             render_pipeline,

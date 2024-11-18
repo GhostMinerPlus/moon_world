@@ -16,45 +16,126 @@ mod pipeline {
         VertexBufferLayout,
     };
 
-    pub fn build_render_pipe_line<'a>(
-        name: &str,
-        device: &Device,
-        render_pipeline_layout: &PipelineLayout,
-        shader: &ShaderModule,
-        buffer_layout_v: &[VertexBufferLayout<'a>],
+    pub struct RenderPipelineBuilder<'a> {
+        name_op: Option<&'a str>,
+        render_pipeline_layout: &'a PipelineLayout,
+        shader: &'a ShaderModule,
+        buffer_layout_v: &'a [VertexBufferLayout<'a>],
         format: TextureFormat,
         topology: wgpu::PrimitiveTopology,
         depth_stencil_op: Option<DepthStencilState>,
-    ) -> RenderPipeline {
-        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some(name),
-            layout: Some(&render_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: shader,
-                entry_point: "vs_main",
-                buffers: buffer_layout_v,
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: shader,
-                entry_point: "fs_main",
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology,
-                ..Default::default()
-            },
-            depth_stencil: depth_stencil_op,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        })
+        blend_op: Option<wgpu::BlendState>,
     }
+
+    impl<'a> RenderPipelineBuilder<'a> {
+        pub fn new(
+            render_pipeline_layout: &'a PipelineLayout,
+            shader: &'a ShaderModule,
+            buffer_layout_v: &'a [VertexBufferLayout<'a>],
+            format: TextureFormat,
+        ) -> Self {
+            Self {
+                render_pipeline_layout,
+                shader,
+                format,
+                name_op: None,
+                buffer_layout_v,
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                depth_stencil_op: None,
+                blend_op: Some(wgpu::BlendState::REPLACE),
+            }
+        }
+
+        pub fn set_name(mut self, name_op: Option<&'a str>) -> Self {
+            self.name_op = name_op;
+
+            self
+        }
+
+        pub fn set_depth_stencil(mut self, depth_stencil_op: Option<DepthStencilState>) -> Self {
+            self.depth_stencil_op = depth_stencil_op;
+
+            self
+        }
+
+        pub fn set_blend(mut self, blend_op: Option<wgpu::BlendState>) -> Self {
+            self.blend_op = blend_op;
+
+            self
+        }
+
+        pub fn build(self, device: &Device) -> RenderPipeline {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: self.name_op,
+                layout: Some(&self.render_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: self.shader,
+                    entry_point: "vs_main",
+                    buffers: self.buffer_layout_v,
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: self.shader,
+                    entry_point: "fs_main",
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: self.format,
+                        blend: self.blend_op,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: self.topology,
+                    ..Default::default()
+                },
+                depth_stencil: self.depth_stencil_op,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
+            })
+        }
+    }
+
+    // pub fn build_render_pipe_line<'a>(
+    //     name: &str,
+    //     device: &Device,
+    //     render_pipeline_layout: &PipelineLayout,
+    //     shader: &ShaderModule,
+    //     buffer_layout_v: &[VertexBufferLayout<'a>],
+    //     format: TextureFormat,
+    //     topology: wgpu::PrimitiveTopology,
+    //     depth_stencil_op: Option<DepthStencilState>,
+    //     blend_op: Option<wgpu::BlendState>,
+    // ) -> RenderPipeline {
+    //     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+    //         label: Some(name),
+    //         layout: Some(&render_pipeline_layout),
+    //         vertex: wgpu::VertexState {
+    //             module: shader,
+    //             entry_point: "vs_main",
+    //             buffers: buffer_layout_v,
+    //             compilation_options: wgpu::PipelineCompilationOptions::default(),
+    //         },
+    //         fragment: Some(wgpu::FragmentState {
+    //             module: shader,
+    //             entry_point: "fs_main",
+    //             targets: &[Some(wgpu::ColorTargetState {
+    //                 format,
+    //                 blend: blend_op,
+    //                 write_mask: wgpu::ColorWrites::ALL,
+    //             })],
+    //             compilation_options: wgpu::PipelineCompilationOptions::default(),
+    //         }),
+    //         primitive: wgpu::PrimitiveState {
+    //             topology,
+    //             ..Default::default()
+    //         },
+    //         depth_stencil: depth_stencil_op,
+    //         multisample: wgpu::MultisampleState::default(),
+    //         multiview: None,
+    //         cache: None,
+    //     })
+    // }
 }
 mod body_render;
 mod view_renderer;

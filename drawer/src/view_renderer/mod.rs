@@ -53,9 +53,7 @@ impl ViewRenderer {
             label: Some("light"),
         });
 
-        let render_pipeline = pipeline::build_render_pipe_line(
-            "View Render Pipeline",
-            &device,
+        let render_pipeline = pipeline::RenderPipelineBuilder::new(
             &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("View Render Render Pipeline Layout"),
                 bind_group_layouts: &[&bind_group_layout],
@@ -67,15 +65,16 @@ impl ViewRenderer {
             }),
             &[Point3Input::desc()],
             TextureFormat::Rgba32Float,
-            wgpu::PrimitiveTopology::TriangleList,
-            Some(DepthStencilState {
-                format: TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::LessEqual,
-                stencil: StencilState::default(),
-                bias: DepthBiasState::default(),
-            }),
-        );
+        )
+        .set_name(Some("View Render Pipeline"))
+        .set_depth_stencil(Some(DepthStencilState {
+            format: TextureFormat::Depth32Float,
+            depth_write_enabled: true,
+            depth_compare: wgpu::CompareFunction::LessEqual,
+            stencil: StencilState::default(),
+            bias: DepthBiasState::default(),
+        }))
+        .build(&device);
         let view_texture = device.create_texture(&TextureDescriptor {
             label: None,
             size: Extent3d {

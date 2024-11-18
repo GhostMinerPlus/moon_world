@@ -43,9 +43,7 @@ impl LightMappingBuilder {
             label: Some("light"),
         });
 
-        let render_pipeline = pipeline::build_render_pipe_line(
-            "Light Mapping Pipeline",
-            &device,
+        let render_pipeline = pipeline::RenderPipelineBuilder::new(
             &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Light Mapping Render Pipeline Layout"),
                 bind_group_layouts: &[&bind_group_layout],
@@ -57,15 +55,16 @@ impl LightMappingBuilder {
             }),
             &[Point3Input::desc()],
             TextureFormat::Rgba32Float,
-            wgpu::PrimitiveTopology::TriangleList,
-            Some(DepthStencilState {
-                format: TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::LessEqual,
-                stencil: StencilState::default(),
-                bias: DepthBiasState::default(),
-            }),
-        );
+        )
+        .set_name(Some("Light Mapping Pipeline"))
+        .set_depth_stencil(Some(DepthStencilState {
+            format: TextureFormat::Depth32Float,
+            depth_write_enabled: true,
+            depth_compare: wgpu::CompareFunction::LessEqual,
+            stencil: StencilState::default(),
+            bias: DepthBiasState::default(),
+        }))
+        .build(&device);
 
         Self {
             render_pipeline,
@@ -261,21 +260,15 @@ mod tests {
 
             let lm_builder = LightMappingBuilder::new(&device);
             let body_v = vec![Body {
-                model_m: 
-                Matrix4::new_translation(&vector![0.0, 0.0, -3.0])
+                model_m: Matrix4::new_translation(&vector![0.0, 0.0, -3.0])
                     * Matrix4::new_rotation(vector![0.0, -PI * 0.25, 0.0]),
-                buf: Arc::new(
-                    device.create_buffer_init(&BufferInitDescriptor {
-                        label: None,
-                        contents: bytemuck::cast_slice(
-                            structs::Point3InputArray::cube(
-                                vector![1.0, 1.0, 1.0, 1.0],
-                            )
-                            .vertex_v(),
-                        ),
-                        usage: BufferUsages::VERTEX,
-                    }),
-                ),
+                buf: Arc::new(device.create_buffer_init(&BufferInitDescriptor {
+                    label: None,
+                    contents: bytemuck::cast_slice(
+                        structs::Point3InputArray::cube(vector![1.0, 1.0, 1.0, 1.0]).vertex_v(),
+                    ),
+                    usage: BufferUsages::VERTEX,
+                })),
             }];
 
             let (_, depth_texture) = lm_builder.light_mapping(

@@ -162,4 +162,23 @@ mod tests {
 
         println!("{}", reverse_vec_from_mat(v, m).normalize());
     }
+
+    #[test]
+    fn test_proj_unity() {
+        let proj_m = drawer::WGPU_OFFSET_M * Matrix4::new_perspective(1.0, PI * 0.6, 0.1, 500.0);
+
+        let pt = vector![1.0, 1.0, -5.0, 1.0];
+
+        println!("{}", proj_m * pt);
+    }
+
+    #[test]
+    fn test_proj_unity1() {
+        let proj_m =
+            drawer::WGPU_OFFSET_M * Matrix4::new_orthographic(-10.0, 10.0, -10.0, 10.0, 0.0, 500.0);
+
+        let pt = vector![1.0, 1.0, -0.1, 1.0];
+
+        println!("{}", proj_m * pt);
+    }
 }
