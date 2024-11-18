@@ -1,7 +1,7 @@
 use std::{f32::consts::PI, sync::Arc};
 
 use drawer::{save_texture, Body, Light, ThreeDrawer, ThreeLook};
-use nalgebra::{vector, Matrix4};
+use nalgebra::{vector, Matrix4, Point3, Vector3};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     BufferUsages, Extent3d, TextureDescriptor, TextureFormat, TextureUsages, TextureViewDescriptor,
@@ -59,17 +59,27 @@ fn main() {
                 | TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
+
+        let eye = Point3::new(4.0, 5.0, 5.0);
+        let yaw = PI * 0.25;
+        let pitch = -PI * 0.25;
+
+        let light_view_m = Matrix4::look_at_rh(
+            &eye,
+            &Point3::new(eye.x - yaw.tan(), eye.y + pitch.tan(), eye.z - 1.0),
+            &Vector3::new(0.0, 1.0, 0.0),
+        );
+
         let look_v = vec![
             ThreeLook::Light(Light {
                 color: vector![1.0, 1.0, 1.0, 1.0],
-                view: Matrix4::new_translation(&vector![0.0, 5.0, 0.0])
-                    * Matrix4::new_rotation(vector![PI * 0.25, 0.0, 0.0]),
+                view: light_view_m,
                 proj: drawer::WGPU_OFFSET_M
                     * Matrix4::new_orthographic(-10.0, 10.0, -10.0, 10.0, 0.0, 20.0),
             }),
             ThreeLook::Body(Body {
                 model_m: Matrix4::new_translation(&vector![0.0, 0.0, -3.0])
-                    * Matrix4::new_rotation(vector![0.0, -PI * 0.25, 0.0]),
+                    * Matrix4::new_rotation(vector![0.0, 0.0, 0.0]),
                 buf: Arc::new(
                     device.create_buffer_init(&BufferInitDescriptor {
                         label: None,
@@ -83,7 +93,7 @@ fn main() {
             }),
             ThreeLook::Body(Body {
                 model_m: Matrix4::new_translation(&vector![0.0, 1.0, -3.0])
-                    * Matrix4::new_rotation(vector![0.0, -PI * 0.45, 0.0]),
+                    * Matrix4::new_rotation(vector![0.0, PI * 0.25, 0.0]),
                 buf: Arc::new(
                     device.create_buffer_init(&BufferInitDescriptor {
                         label: None,

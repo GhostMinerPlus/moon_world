@@ -247,8 +247,8 @@ impl EngineBuilder {
 
         Ok(Engine::new(
             dm,
-            res::PhysicsManager::new(IntegrationParameters::default()),
-            res::VisionManager::new(self.surface, device, queue, config),
+            res::PhysicsElementProvider::new(IntegrationParameters::default()),
+            res::VisionElementProvider::new(self.surface, device, queue, config),
         ))
     }
 }
@@ -270,8 +270,8 @@ pub struct Engine {
     element_mp: HashMap<u64, AtomElement>,
 
     data_manager: Box<dyn AsClassManager>,
-    physics_manager: res::PhysicsManager,
-    vision_manager: res::VisionManager,
+    physics_manager: res::PhysicsElementProvider,
+    vision_manager: res::VisionElementProvider,
     input_provider: res::InputProvider,
 
     cc: camera::CameraController,
@@ -281,8 +281,8 @@ impl Engine {
     /// called => the result = a new [Engine]
     pub fn new(
         dm: Box<dyn AsClassManager>,
-        physics_manager: res::PhysicsManager,
-        vision_manager: res::VisionManager,
+        physics_manager: res::PhysicsElementProvider,
+        vision_manager: res::VisionElementProvider,
     ) -> Self {
         Self {
             unique_id: 0,

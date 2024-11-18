@@ -6,7 +6,7 @@ use std::{
 
 use drawer::{camera::CameraState, Body, Light, ThreeLook};
 use error_stack::ResultExt;
-use nalgebra::{point, vector, Matrix4};
+use nalgebra::{point, vector, Matrix4, Vector3};
 use rapier3d::prelude::{
     ColliderBuilder, IntegrationParameters, RigidBodyBuilder, RigidBodyHandle,
 };
@@ -27,7 +27,7 @@ mod inner {
         Collider, ContactForceEvent, EventHandler, RigidBody, RigidBodyHandle,
     };
 
-    use super::PhysicsManager;
+    use super::PhysicsElementProvider;
 
     pub struct InnerEventHandler {
         collision_sender: Sender<rapier3d::prelude::CollisionEvent>,
@@ -74,7 +74,7 @@ mod inner {
 
     /// Let the body be added into this manager.
     pub fn add_body(
-        m: &mut PhysicsManager,
+        m: &mut PhysicsElementProvider,
         body: RigidBody,
         collider_v: Vec<Collider>,
     ) -> RigidBodyHandle {
@@ -92,11 +92,11 @@ mod inner {
     }
 }
 
-pub struct PhysicsManager {
+pub struct PhysicsElementProvider {
     pub physics_engine: physics::PhysicsEngine,
 }
 
-impl PhysicsManager {
+impl PhysicsElementProvider {
     pub fn new(integration_parameters: IntegrationParameters) -> Self {
         let (collision_sender, _collision_event_rx) = channel();
         let (force_sender, _force_event_rx) = channel();
@@ -114,7 +114,7 @@ impl PhysicsManager {
     }
 }
 
-impl AsElementProvider for PhysicsManager {
+impl AsElementProvider for PhysicsElementProvider {
     type H = RigidBodyHandle;
 
     fn create_element(&mut self, _: u64, class: &str, props: &json::JsonValue) -> RigidBodyHandle {
@@ -171,7 +171,7 @@ impl AsElementProvider for PhysicsManager {
 }
 
 pub struct RenderPass<'a> {
-    vm: &'a mut VisionManager,
+    vm: &'a mut VisionElementProvider,
     output: SurfaceTexture,
     id_v: Vec<u64>,
 }
@@ -209,7 +209,7 @@ impl<'a> RenderPass<'a> {
     }
 }
 
-pub struct VisionManager {
+pub struct VisionElementProvider {
     config: wgpu::SurfaceConfiguration,
 
     surface: wgpu::Surface<'static>,
@@ -221,7 +221,7 @@ pub struct VisionManager {
     pub body_mp: HashMap<u64, ThreeLook>,
 }
 
-impl VisionManager {
+impl VisionElementProvider {
     pub fn new(
         surface: wgpu::Surface<'static>,
         device: wgpu::Device,
@@ -278,7 +278,7 @@ impl VisionManager {
     }
 }
 
-impl AsElementProvider for VisionManager {
+impl AsElementProvider for VisionElementProvider {
     type H = u64;
 
     fn create_element(&mut self, vnode_id: u64, class: &str, props: &json::JsonValue) -> u64 {
@@ -293,10 +293,27 @@ impl AsElementProvider for VisionManager {
                         .map(|n| n.as_str().unwrap().parse().unwrap())
                         .collect::<Vec<f32>>();
 
-                    vector![pos[0], pos[1], pos[2]]
+                    point![pos[0], pos[1], pos[2]]
                 } else {
-                    vector![0.0, 0.0, 0.0]
+                    point![0.0, 0.0, 0.0]
                 };
+                let (yaw, pitch) = if props["$direction"].is_array() {
+                    let direction = props["$direction"]
+                        .members()
+                        .into_iter()
+                        .map(|n| n.as_str().unwrap().parse().unwrap())
+                        .collect::<Vec<f32>>();
+
+                    (direction[0], direction[1])
+                } else {
+                    (0.0, 0.0)
+                };
+                let view = Matrix4::look_at_rh(
+                    &pos,
+                    &point![pos.x - yaw.tan(), pos.y + pitch.tan(), pos.z - 1.0],
+                    &Vector3::new(0.0, 1.0, 0.0),
+                );
+
                 let color = if props["$color"].is_array() {
                     let color = props["$color"]
                         .members()
@@ -313,8 +330,7 @@ impl AsElementProvider for VisionManager {
                     vnode_id,
                     ThreeLook::Light(Light {
                         color,
-                        view: Matrix4::new_translation(&pos)
-                            * Matrix4::new_rotation(vector![PI * 0.25, 0.0, 0.0]),
+                        view,
                         proj: drawer::WGPU_OFFSET_M
                             * Matrix4::new_orthographic(-10.0, 10.0, -10.0, 10.0, 0.0, 20.0),
                     }),

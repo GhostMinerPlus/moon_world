@@ -106,7 +106,7 @@ impl Point3InputArray {
             },
         ];
 
-        let mut cur_is_up = false;
+        let mut cur_is_left = true;
 
         for i in 1..6 {
             let offet = (i - 1) * 6;
@@ -132,15 +132,15 @@ impl Point3InputArray {
             let ox = p_x - p_o;
             let oy = p_y - p_o;
 
-            let r_m = if cur_is_up {
-                Matrix4::new_rotation_wrt_point(ox * 0.5 * PI, p_o)
+            let r_m = if cur_is_left {
+                Matrix4::new_rotation_wrt_point(-oy * 0.5 * PI, p_x)
             } else {
-                Matrix4::new_rotation_wrt_point(oy * 0.5 * PI, p_x)
+                Matrix4::new_rotation_wrt_point(-ox * 0.5 * PI, p_o)
             };
-            let rt_m = if cur_is_up {
-                Matrix4::new_translation(&oy) * r_m
-            } else {
+            let rt_m = if cur_is_left {
                 Matrix4::new_translation(&(-ox)) * r_m
+            } else {
+                Matrix4::new_translation(&oy) * r_m
             };
 
             let face = o_face
@@ -168,7 +168,7 @@ impl Point3InputArray {
                 .collect::<Vec<Point3Input>>();
 
             vertex_v.extend(face);
-            cur_is_up = !cur_is_up;
+            cur_is_left = !cur_is_left;
         }
 
         Self { vertex_v }

@@ -38,7 +38,7 @@
     {
         $class: div,
         $child: [
-            {$class: Vision:light3, $props: {$position: [0.0, 5.0, 0.0]} },
+            {$class: Vision:light3, $props: {$position: [5.0, 5.0, 2.0], $direction: [0.8, -0.8]} },
             {$class: Box, $props: {$position: [-1.0, 2.0, -3.0], $color: [0.2, 0.4, 1.0], $body_type: dynamic} },
             {$class: Box, $props: {$position: [-1.0, 0.0, -3.0], $color: [0.6, 1.0, 0.5]} },
             {
